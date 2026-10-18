@@ -1,0 +1,19 @@
+  Aufspielen gestartet, 22672 Byte
+  [Konsole] Gerät: S3PL-20112EU (OutdoorPlugSG3), Firmware 1.7.1, Gen 3
+  [Konsole] Firmware 1.7.1 älter als 2.0.1 – Update auf stabil wird angestoßen
+  [Konsole] Firmware jetzt 2.0.3
+  [Konsole] Matter abgeschaltet
+  [Konsole] Skriptplatz angelegt: 1
+  [Konsole] Code hochgeladen: 22672 Byte
+  [Konsole] Autostart an
+  [Konsole] Selbsttest im Skript (Ort, Wetter 15 Tage): ok, Ort 49.48 8.45
+  [Konsole] Skript läuft: true, Speicher 12000 (Spitze 14000, frei 60000, Reserve in der Spitze 58000)
+  [Konsole] Relais: Einschaltzustand off, Notabschaltung true nach 9600 s, selbst wieder ein: nein
+  [Konsole] Bedienfeld: text:200, number:200, boolean:200, number:201, number:202, button:200, group:200 – vollständig
+  [Konsole] Status: Heute nicht geprüft, nächste Prüfung morgen 10:00
+  [Konsole] Uhr: 2026-10-19T13:00:55.000Z
+  [Konsole] Wetterdienst vom Gerät: ok 2026-10-19: ET0 4 mm gestern
+  [Konsole] FERTIG – alles in Ordnung
+
+BROWSERWEG: bestanden
+exit 0

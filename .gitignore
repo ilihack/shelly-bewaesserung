@@ -1,0 +1,5 @@
+node_modules/
+__pycache__/
+*.pyc
+test-out/S25.txt
+test-out/snippet.txt

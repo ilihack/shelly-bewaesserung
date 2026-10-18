@@ -1,0 +1,20 @@
+  ok  Lauf 1 (Start Monat 8, 19 Läufe, davon 17 automatisch)
+  ok  Lauf 2 (Start Monat 10, 10 Läufe, davon 6 automatisch)
+  ok  Lauf 3 (Start Monat 11, 11 Läufe, davon 8 automatisch)
+  ok  Lauf 4 (Start Monat 1, 2 Läufe, davon 0 automatisch)
+  ok  Lauf 5 (Start Monat 5, 15 Läufe, davon 13 automatisch)
+  ok  Lauf 6 (Start Monat 4, 18 Läufe, davon 11 automatisch)
+  ok  Lauf 7 (Start Monat 8, 12 Läufe, davon 8 automatisch)
+  ok  Lauf 8 (Start Monat 8, 16 Läufe, davon 13 automatisch)
+  ok  Lauf 9 (Start Monat 9, 19 Läufe, davon 16 automatisch)
+  ok  Lauf 10 (Start Monat 6, 19 Läufe, davon 15 automatisch)
+  ok  Lauf 11 (Start Monat 5, 14 Läufe, davon 13 automatisch)
+  ok  Lauf 12 (Start Monat 10, 17 Läufe, davon 14 automatisch)
+  ok  Lauf 13 (Start Monat 9, 17 Läufe, davon 10 automatisch)
+  ok  Lauf 14 (Start Monat 4, 13 Läufe, davon 9 automatisch)
+  ok  Lauf 15 (Start Monat 11, 8 Läufe, davon 5 automatisch)
+  ok  Lauf 16 (Start Monat 8, 18 Läufe, davon 12 automatisch)
+Abschaltgründe: Ende/Stopp 173, fw 10, keinStrom 3, ueberlast 7, unterlast 35
+
+16 von 16 Zufallsläufen ohne Regelverstoß [bewaesserung.min.js]
+exit 0

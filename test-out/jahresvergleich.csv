@@ -1,0 +1,36 @@
+verfahren,jahr,gegossen,laeufe,stresstage,versickert
+Skript mit Prognose,2022,527,53,11,2
+Skript mit Prognose,2023,464,48,1,0
+Skript mit Prognose,2024,295,32,1,0
+Skript mit Prognose,2025,464,46,10,4
+Skript mit Prognose,2026,557,59,0,0
+Skript ohne Prognose,2022,543,53,11,5
+Skript ohne Prognose,2023,480,49,1,0
+Skript ohne Prognose,2024,354,37,0,0
+Skript ohne Prognose,2025,491,48,9,4
+Skript ohne Prognose,2026,568,58,0,0
+Skript ohne Internet,2022,736,75,19,185
+Skript ohne Internet,2023,706,71,8,215
+Skript ohne Internet,2024,678,68,1,289
+Skript ohne Internet,2025,703,67,13,196
+Skript ohne Internet,2026,746,72,15,166
+Bodenfeuchte ideal,2022,535,41,0,0
+Bodenfeuchte ideal,2023,489,37,0,0
+Bodenfeuchte ideal,2024,315,25,0,0
+Bodenfeuchte ideal,2025,500,39,0,0
+Bodenfeuchte ideal,2026,558,42,0,0
+Zeitschaltuhr,2022,650,52,63,181
+Zeitschaltuhr,2023,650,52,51,228
+Zeitschaltuhr,2024,662,53,28,333
+Zeitschaltuhr,2025,650,52,53,233
+Zeitschaltuhr,2026,650,52,50,160
+Uhr mit Regensensor,2022,500,40,79,65
+Uhr mit Regensensor,2023,462,37,61,100
+Uhr mit Regensensor,2024,325,26,47,77
+Uhr mit Regensensor,2025,450,36,65,61
+Uhr mit Regensensor,2026,525,42,68,74
+Monatsfaktor,2022,591,70,56,106
+Monatsfaktor,2023,597,70,49,146
+Monatsfaktor,2024,594,70,5,247
+Monatsfaktor,2025,593,70,38,146
+Monatsfaktor,2026,582,66,62,103
