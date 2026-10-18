@@ -2,14 +2,16 @@
 /*
  * Spielt das Bewässerungsskript auf den Shelly Outdoor Plug S Gen3 und prüft das Ergebnis.
  * Ein Ablauf, zwei Wege:
- *   Node (ab 18):   node tools/deploy.js <ip-des-shelly> [build/bewaesserung.min.js] [--passwort <pw>] [--ohne-waechtertest]
+ *   Node (ab 18):   node tools/deploy.js <ip-des-shelly> [build/bewaesserung.min.js] [--passwort <pw>]
+ *                   [--neues-passwort <pw>] [--ohne-waechtertest]
  *   Browser:        auf der Weboberfläche des Shelly (http(s)://<ip>/) in der Konsole den Inhalt von
  *                   build/deploy-browser.js einfügen (gleiche Herkunft, kein CORS; ohne Gerätepasswort)
  * Schritte: Gerät prüfen -> neueste stabile Firmware -> Matter aus -> Wächter anhalten -> Skript anlegen/ersetzen
  *           -> Autostart an -> starten, Bedienfeld anlegen lassen, Skript neu starten -> Selbsttest -> prüfen:
  *           Skript läuft fehlerfrei, Einschaltzustand aus, Notabschaltung 9600 s, kein Wiedereinschalten,
  *           Bedienfeld vollständig, Statuszeile da, Wetterdienst erreichbar, Speicherreserve >= 2 KB,
- *           Sicherheit (Passwort, Access Point, Bluetooth), Wächter startet ein angehaltenes Skript neu.
+ *           Sicherheit (Passwort, Access Point, Bluetooth), Firmware-Update-Zeitplan, Wächter startet ein angehaltenes
+ *           Skript neu; auf Wunsch zuletzt das Gerätepasswort setzen (--neues-passwort).
  * Hat der Shelly ein Passwort (Benutzer admin), meldet er sich per Digest mit SHA-256 an (Shelly-Doku,
  * General/Authentication); im Browserweg ist das nicht vorgesehen.
  */
@@ -19,9 +21,11 @@ async function deployShelly(base, code, log, opt) {
   const NAME = 'bewaesserung', WD = '0 */5 * * * *';
   const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   let auth = null;                                   // Anmeldung: { realm, nonce, nc, legacy, ha1 }
-  async function sha256(t) {
-    if (!(typeof crypto !== 'undefined' && crypto.subtle)) throw new Error('Passwort nur über https oder Node');
-    const b = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(t));
+  async function sha256(t) {                         // Node 18 hat crypto noch nicht global, nur als Modul
+    const c = (typeof crypto !== 'undefined' && crypto.subtle) ? crypto :
+      (typeof require === 'function' ? require('crypto').webcrypto : null);
+    if (!(c && c.subtle)) throw new Error('Passwort nur über https oder Node');
+    const b = await c.subtle.digest('SHA-256', new TextEncoder().encode(t));
     return Array.from(new Uint8Array(b)).map((x) => ('0' + x.toString(16)).slice(-2)).join('');
   }
   async function challenge(h) {                      // 401: Anmeldedaten aus WWW-Authenticate übernehmen
@@ -198,14 +202,22 @@ async function deployShelly(base, code, log, opt) {
     let ble = {};
     try { ble = await rpc('BLE.GetConfig'); } catch (e) { /* ohne Bluetooth */ }
     out.sicherheit = { passwort: !!info.auth_en, accessPoint: !!ap.enable, bluetoothSteuerung: !!(ble.rpc && ble.rpc.enable) };
-    step('Sicherheit: Gerätepasswort ' + (info.auth_en ? 'an' : 'AUS – Empfehlung: in der App setzen') + ', Access Point ' +
+    step('Sicherheit: Gerätepasswort ' + (info.auth_en ? 'an' : opt.neuesPasswort ? 'wird zum Schluss gesetzt' :
+      'AUS – Empfehlung: --neues-passwort <pw> oder in der App setzen') + ', Access Point ' +
       (ap.enable ? 'an (mit Passwort)' : 'aus') + ', Steuerung über Bluetooth ' + (out.sicherheit.bluetoothSteuerung ? 'an (ab Firmware 2.0 nur gekoppelt)' : 'aus'));
   } catch (e) { step('Sicherheit nicht lesbar: ' + e.message); }
 
-  // 8. Wächter: Zeitplan aktiv? Danach das Skript anhalten; der Zeitplan muss es binnen 5 min neu starten
-  const wd = ((await rpc('Schedule.List')).jobs || []).filter((j) => isWd(j, s.id));
+  // 8. Zeitpläne, die das Skript anlegt: Wächter und automatisches Firmware-Update. Danach das Skript anhalten;
+  //    der Wächter muss es binnen 5 min neu starten
+  const jobs = (await rpc('Schedule.List')).jobs || [];
+  const wd = jobs.filter((j) => isWd(j, s.id));
   out.waechterPlan = wd.length === 1 && wd[0].enable === true && wd[0].timespec === WD;
   step('Wächter-Zeitplan: ' + (out.waechterPlan ? 'alle 5 min, aktiv' : 'FEHLT oder falsch: ' + JSON.stringify(wd)));
+  const upd = jobs.filter((j) => (j.calls || []).some((c) => String(c.method).toLowerCase() === 'shelly.update'));
+  const updAn = upd.filter((j) => j.enable === true);
+  out.updatePlan = upd.length > 0;                   // in der App abgeschaltet ist eine Entscheidung, kein Fehler
+  step('Firmware automatisch aktualisieren: ' + (updAn.length ? 'an (' + updAn[0].timespec + ')' :
+    (upd.length ? 'aus (in der App abgeschaltet)' : 'FEHLT')));
   out.waechter = !!opt.ohneWaechter;
   if (!opt.ohneWaechter && out.waechterPlan && out.uhr) {
     await rpc('Script.Stop', { id: s.id });
@@ -216,9 +228,27 @@ async function deployShelly(base, code, log, opt) {
     if (!out.waechter) await rpc('Script.Start', { id: s.id });
   } else if (!opt.ohneWaechter) step('Wächtertest übersprungen (Zeitplan oder Uhr fehlt)');
 
+  // 9. Gerätepasswort setzen, wenn gewünscht (Benutzer admin; ha1 = SHA256("admin:<Geräte-ID>:<Passwort>") laut
+  //    Shelly-Doku). Danach mit dem neuen Passwort anmelden: Erst wenn das klappt, gilt es als gesetzt.
+  out.passwortNeu = !opt.neuesPasswort;
+  if (opt.neuesPasswort) {
+    let fehler = '';
+    try {
+      await rpc('Shelly.SetAuth', { user: 'admin', realm: info.id, ha1: await sha256('admin:' + info.id + ':' + opt.neuesPasswort) });
+    } catch (e) { fehler = e.message; }              // auch ohne Antwort kann es gesetzt sein: unten mit dem neuen prüfen
+    opt.pass = opt.neuesPasswort; auth = null;
+    for (let i = 0; i < 3 && !out.passwortNeu; i++) {
+      try { await rpc('Sys.GetStatus'); out.passwortNeu = true; } catch (e) { fehler = fehler || e.message; await sleep(3000); }
+    }
+    if (out.passwortNeu && out.sicherheit) out.sicherheit.passwort = true;
+    step(out.passwortNeu ? 'Gerätepasswort gesetzt, Anmeldung damit geprüft' :
+      'FEHLER: Anmeldung mit dem neuen Passwort klappt nicht (' + fehler + '). Mit --passwort <neues> nochmal aufrufen, dann mit ' +
+      '--passwort <altes>; geht beides nicht: Shelly zurücksetzen (Taster 10 s halten) und neu aufspielen');
+  }
+
   out.ok = st.running && !st.errors && cfg.initial_state === 'off' && cfg.auto_off === true &&
     cfg.auto_off_delay === 9600 && cfg.auto_on !== true && fehlt.length === 0 && !!out.status && /^ok/.test(out.wetter) && reserve >= 2048 &&
-    /^ok/.test(selbst) && out.waechterPlan && out.waechter && out.firmwareNeu;
+    /^ok/.test(selbst) && out.waechterPlan && out.waechter && out.firmwareNeu && out.updatePlan && out.passwortNeu;
   step(out.ok ? 'FERTIG – alles in Ordnung' : 'PRÜFEN – siehe oben');
   return out;
 }
@@ -242,10 +272,21 @@ if (typeof module !== 'undefined' && require.main === module) {
   const path = require('path');
   const args = process.argv.slice(2), opt = {};
   const pw = args.indexOf('--passwort');
-  if (pw >= 0) { opt.pass = args[pw + 1]; args.splice(pw, 2); }
+  if (pw >= 0) {
+    opt.pass = args[pw + 1]; args.splice(pw, 2);
+    if (!opt.pass || /^--/.test(opt.pass)) { console.log('--passwort braucht ein Passwort'); process.exit(2); }
+  }
+  const np = args.indexOf('--neues-passwort');
+  if (np >= 0) {
+    opt.neuesPasswort = args[np + 1]; args.splice(np, 2);
+    if (!opt.neuesPasswort || /^--/.test(opt.neuesPasswort)) { console.log('--neues-passwort braucht ein Passwort'); process.exit(2); }
+  }
   const ow = args.indexOf('--ohne-waechtertest');
   if (ow >= 0) { opt.ohneWaechter = true; args.splice(ow, 1); }
-  if (!args[0]) { console.log('Aufruf: node tools/deploy.js <ip> [gerätefassung.js] [--passwort <pw>] [--ohne-waechtertest]'); process.exit(2); }
+  if (!args[0]) {
+    console.log('Aufruf: node tools/deploy.js <ip> [gerätefassung.js] [--passwort <pw>] [--neues-passwort <pw>] [--ohne-waechtertest]');
+    process.exit(2);
+  }
   const file = args[1] || path.join(__dirname, '..', 'build', 'bewaesserung.min.js');
   shellyBasis(args[0])
     .then((base) => deployShelly(base, fs.readFileSync(file, 'utf8'), null, opt))

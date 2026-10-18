@@ -13,15 +13,21 @@ Ein Skript für den **Shelly Outdoor Plug S Gen3**: Der Stecker schaltet eine Br
 - **Schützt die Pumpe.** Es erkennt über die Leistung Trockenlauf, einen zugedrehten Hahn, Blockade, eine fehlende Last und ein klebendes Relais.
   - Die Normalleistung lernt es beim ersten Lauf selbst.
   - Nach einer Störung beim Anlauf startet es nach 6 min einen zweiten Versuch, nach anderen Störungen nach 60 min.
-  - Unabhängig vom Skript schaltet die Firmware das Relais nach 160 min ab. Ein Zeitplan der Firmware startet ein stehendes Skript binnen 5 min neu.
+  - Unabhängig vom Skript schaltet die Firmware das Relais nach 160 min ab.
+- **Hält sich selbst in Gang.** Ein Zeitplan der Firmware startet ein stehendes Skript binnen 5 min neu. Ein zweiter installiert jede Nacht um 03:23 die neueste stabile Firmware, falls es eine gibt.
+  - Wächter, Einschaltzustand und Notabschaltung stellt das Skript stündlich nach, falls sie in der App verstellt wurden. Das Firmware-Update legt es nur an, wenn es keines gibt: In der App abgeschaltet, bleibt es aus.
+  - Ein Fehler beim Verarbeiten einer Antwort hält das Skript nicht an. Es verwirft das Halbverbuchte und versucht es später nochmal.
+  - Fehlt ein Bedienelement, etwa in der App gelöscht, legt das Skript es binnen einer Minute neu an.
 - **Kommt ohne Internet aus.**
   - Es rechnet mit Monatsmitteln und der Temperatur seines eigenen Fühlers. Die Eigenwärme des Steckers lernt es selbst.
   - Ohne Internet gießt es lieber etwas mehr.
   - Kommt das Internet zurück, rechnet es die geschätzten Tage mit echten Daten neu, bis 14 Tage rückwirkend.
-- **Übersteht Stromausfälle.** Alle 6 h speichert es einen Zeitanker. Bleibt das Internet weg, stellt es die Uhr nach der nächsten klaren Nacht am Tagesgang der Temperatur nach.
+- **Übersteht Stromausfälle.** Alle 6 h speichert es einen Zeitanker.
+  - Erreicht der Shelly den Zeitserver nicht, wohl aber das Internet, nimmt es die Uhrzeit aus den Antworten des Wetterdienstes.
+  - Bleibt das Internet ganz weg, stellt es die Uhr nach der nächsten klaren Nacht am Tagesgang der Temperatur nach.
 - **Wird bedient** über den Taster am Stecker oder den Schalter in der App: einmal drücken ist eine Handgabe, nochmal drücken stoppt sie.
   - Dazu kommt ein Bedienfeld in der Shelly-App: Status, Wasserdefizit, Automatik, Pause, Regenrate, Pumpe neu einlernen.
-  - Die LED zeigt: grün (gedimmt) = alles gut, blau = Pumpe läuft, gelb = ohne Internet, violett = Störung. Rot gehört der Firmware (WLAN weg, Update), blaues Blinken dem Access Point.
+  - Die LED zeigt in voller Helligkeit: grün = alles gut, blau = Pumpe läuft, gelb = ohne Internet, violett = Störung. Rot gehört der Firmware (WLAN weg, Update), blaues Blinken dem Access Point.
 
 ## Was du brauchst
 
@@ -44,7 +50,7 @@ Alles Einstellbare steht oben im Skript (`src/bewaesserung.js`, Block `C`):
 | `SEASON_FROM`, `SEASON_TO` | Monate mit Automatik. |
 | `RATE_MM_H` | Regenrate der Regner (mm/h). Mit dem Becher-Test messen: Dosen aufstellen, 30 min gießen, Wasserhöhe × 2. Lässt sich auch im Bedienfeld ändern. |
 | `KC`, `TRIGGER_MM`, `DOSE_*`, `D_MAX_MM` | Rasen und Gießregel: Pflanzenfaktor, Schwelle, kleinste und größte Gabe, Obergrenze des Kontos. |
-| `FROST_C`, `FROST_OFF_C`, `FROST_THAW_C` | Frostnacht: Tiefstwert der Prognose unter 3 °C, ohne Internet geschätzt unter 4 °C. Danach gießt es erst, wenn die Luft 5 °C hat. |
+| `FROST_C`, `FROST_OFF_C`, `FROST_THAW_C` | Frostnacht: Tiefstwert unter 5 °C, mit Internet laut Prognose, ohne Internet aus dem Gerätefühler geschätzt. Danach gießt es erst, wenn die Luft 5 °C hat. |
 | `P_LEARN_*`, `P_ABS_*`, `I_MAX` | Pumpe, siehe unten. **An die eigene Pumpe anpassen.** |
 
 Darunter stehen Fachwerte, die man nur mit Grund ändert.
@@ -73,8 +79,10 @@ I ist der Nennstrom laut Typenschild. Die Formeln rechnen mit dem Strom, weil di
 ```sh
 npm install
 npm run build                    # build/bewaesserung.min.js (gekürzt, nur ASCII, Sprachmittel geprüft) und build/deploy-browser.js
-node tools/deploy.js <IP-des-Shelly> [--passwort <Gerätepasswort>]
+node tools/deploy.js <IP-des-Shelly> [--passwort <Gerätepasswort>] [--neues-passwort <neues Passwort>]
 ```
+
+`--neues-passwort` setzt zum Schluss das Gerätepasswort (Benutzer `admin`) und meldet sich zur Probe damit an. Danach braucht jeder weitere Aufruf `--passwort`.
 
 Ohne Node geht es auch im Browser, solange der Shelly kein Passwort hat. Auf der Weboberfläche des Shelly (`http://<IP>/`) die Entwicklerkonsole öffnen, den Inhalt von `build/deploy-browser.js` einfügen und Enter drücken. Das Aufspielen startet sofort und meldet sich in der Konsole; das Ergebnis steht danach in `window.__bw`.
 
@@ -92,29 +100,36 @@ Danach prüft es:
 - einen Wetterabruf vom Gerät aus;
 - die Speicherreserve unter Last: Das Skript lädt die größte Wetterantwort, danach müssen 2 KB frei sein;
 - die Sicherheit: Ein offener Access Point wird abgeschaltet, sobald der Shelly im Heim-WLAN ist; Passwort und Bluetooth meldet es;
+- den Firmware-Update-Zeitplan (in der App abgeschaltet ist kein Fehler);
 - den Wächter: Es hält das Skript an, der Zeitplan muss es binnen 5,5 min wieder starten.
 
 Erst wenn alles stimmt, meldet es „FERTIG“.
+
+**Ohne Werkzeug** geht es auch von Hand, nur ohne die Prüfungen oben:
+1. In der App die Firmware aktualisieren und Matter abschalten.
+2. Auf der Weboberfläche des Shelly unter *Scripts* ein neues Skript anlegen, den Inhalt von `build/bewaesserung.min.js` einfügen (nicht den Quelltext: der hat Umlaute und braucht mehr Speicher), speichern, starten und in der Skriptliste den Autostart einschalten.
+
+Bedienfeld, Relais-Einstellungen, Wächter, LED und Firmware-Update richtet das Skript selbst ein. Den Access Point und das Passwort (Weboberfläche: *Settings → Device settings → Authentication*) stellst du dann selbst ein.
 
 Danach mit Pumpe:
 1. **Normalleistung einlernen:** Hahn auf, Taster drücken, nach 2 min wieder drücken.
 2. **Hahn-zu-Test:** Während eines Laufs den Hahn zudrehen. Die Pumpe muss binnen etwa 15 s abschalten.
 3. **Becher-Test** für die Regenrate.
 
-In der Shelly-App keine eigenen Zeitpläne für den Stecker anlegen. Den einen Zeitplan, den das Skript selbst anlegt, nicht löschen: Er ist der Wächter. Das Skript legt ihn aber auch selbst wieder an.
+In der Shelly-App keine eigenen Zeitpläne zum Schalten des Steckers anlegen. Die zwei Zeitpläne des Skripts (Wächter, Firmware-Update) stehen in der Liste der Zeitpläne. Den Wächter legt das Skript selbst wieder an. Das Firmware-Update abschalten, nicht löschen: Gelöscht legt das Skript es neu an.
 
 ### Sicherheit
 
 Das Skript öffnet keinen eigenen Zugang; bedient wird es nur über das Gerät und die Shelly-App. Es ruft nur feste Adressen von Open-Meteo über https auf und prüft die Antworten auf Grenzen. Zu schützen ist das Gerät:
-- In der Shelly-App ein **Gerätepasswort** setzen. Ohne Passwort kann jeder im WLAN die Pumpe schalten oder das Skript ersetzen.
+- Ein **Gerätepasswort** setzen, beim Aufspielen mit `--neues-passwort` oder auf der Weboberfläche unter *Settings → Device settings → Authentication*. Ohne Passwort kann jeder im WLAN die Pumpe schalten oder das Skript ersetzen.
 - Das **Shelly-Konto** mit Zwei-Faktor-Anmeldung schützen, wenn die Cloud an ist.
-- **Firmware aktuell halten:** Zeigt die App ein Update, das Aufspielwerkzeug nochmal laufen lassen. Es aktualisiert und prüft danach alles.
+- **Firmware aktuell halten:** Das erledigt der Update-Zeitplan jede Nacht. Nach einem großen Update (neue Hauptversion) das Aufspielwerkzeug nochmal laufen lassen; es prüft danach alles.
 
 ## Prüfen und Weiterentwickeln
 
 | Befehl | prüft |
 | --- | --- |
-| `node emu/scenarios.js [skript]` | 51 Szenarien im Emulator, für Quelltext und Gerätefassung. Der Emulator bildet Relais, Leistung, Firmware-Schutz, Uhr mit Zeitserver, Stromausfall, Speicher, Bedienfeld, Wetterdienst und Gerätetemperatur nach und wacht über die Grenzen der Firmware. |
+| `node emu/scenarios.js [skript]` | 53 Szenarien im Emulator, für Quelltext und Gerätefassung. Der Emulator bildet Relais, Leistung, Firmware-Schutz, Uhr mit Zeitserver, Stromausfall, Speicher, Bedienfeld, Wetterdienst und Gerätetemperatur nach und wacht über die Grenzen der Firmware. |
 | `node emu/zufall.js [skript] [läufe] [tage]` | Zufallstest: wochenlang Stromausfälle, Internet- und Zeitserverausfälle, kaputte Wetterantworten, Pumpenstörungen beim Anlauf und mitten im Lauf, Tastendrücke und Neustarts; prüft Regeln, die immer gelten müssen |
 | `sh tools/espruino-run.sh build/bewaesserung.min.js [espruino]` | ein Tag im echten Espruino-Interpreter, auf dem die Shelly-Skriptsprache beruht ([Espruino](https://github.com/espruino/Espruino) für Linux bauen, Pfad als zweites Argument) |
 | `node emu/deploy-test.js`, `emu/browser-deploy-test.js` | Aufspielwerkzeug gegen einen nachgebauten Shelly mit Firmware-Update, https, Passwort und Wächter, per Node und im Browser (braucht Playwright: `npm install --no-save playwright && npx playwright install chromium`) |
@@ -140,7 +155,8 @@ Das Skript gießt 97 % der Menge eines idealen Bodensensors; seine zwei Stressta
 
 ## Grenzen
 
-- **Was noch am echten Gerät zu prüfen ist:** wie viel Leistung die Pumpe bei zugedrehtem Hahn zieht und wie viel Arbeitsspeicher das Skript braucht; das Aufspielwerkzeug misst den Speicher. Die Anmeldung mit Gerätepasswort folgt der Shelly-Doku, gelaufen ist sie bisher nur gegen den Nachbau.
+- **Was noch am echten Gerät zu prüfen ist:** wie viel Leistung die Pumpe bei zugedrehtem Hahn zieht und wie viel Arbeitsspeicher das Skript braucht (Gerätefassung 26,4 KB); das Aufspielwerkzeug misst den Speicher. Anmelden und Setzen des Gerätepassworts folgen der Shelly-Doku, gelaufen sind sie bisher nur gegen den Nachbau.
+- **Steht das Skript dauerhaft,** etwa weil ein Firmware-Update es nicht mehr starten lässt, bleibt die LED auf ihrer letzten Farbe. Die Pumpe schützt dann nur noch die Firmware: Einschaltzustand aus, Notabschaltung nach 160 min. Ob das Skript läuft, zeigt die Weboberfläche unter *Scripts*.
 - **Die Nachprüfung um 11:05 und 12:05 sieht im Sommer meist dieselbe Prognose wie um 10:00.** Das Wettermodell ICON-D2 des DWD rechnet alle 3 h; der Lauf von 11:00 Sommerzeit ist erst gegen 12:35 abrufbar. Die Nachprüfung hilft bei Frost, bei verspäteten Läufen und im Winterhalbjahr.
 - **Firmware ab 2.0 prüft das Datum von TLS-Zertifikaten.** Ist die Uhr nur angenommen (erster Start ohne Internet), klappt HTTPS erst, wenn der Zeitserver die Uhr gestellt hat. Bis dahin rechnet das Skript wie ohne Internet.
 - **Open-Meteo fällt gelegentlich für Minuten bis etwa eine Stunde aus.** Das Skript versucht es deshalb viermal über eine Stunde, danach rechnet es mit Schätzwerten. Zwei Abrufe kurz hintereinander können leicht verschiedene Prognosen liefern.

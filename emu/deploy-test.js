@@ -6,6 +6,7 @@
  *   c) falsches Passwort: sauberer Abbruch
  *      dazu: Hochladen bricht einmal ab (zweiter Versuch), zweimal ab (Meldung, Wächter wieder an)
  *   d) Firmware-Update scheitert, nur Access Point: Skript läuft, Ergebnis nicht „FERTIG“, Access Point bleibt an
+ *   e) --neues-passwort: ohne und mit altem Passwort; danach gilt nur das neue
  * Aufruf: node emu/deploy-test.js
  */
 const fs = require('fs');
@@ -31,6 +32,9 @@ const mock = (opt) => new Promise((res) => startMock(res, opt));
     pruefe('a) Selbsttest im Skript ok', m.state.evals === 2 && m.world.logs.some((l) => /Selbsttest Wetter: ok/.test(l.msg)), '');
     pruefe('a) offener Access Point abgeschaltet', m.state.ap === false, String(m.state.ap));
     pruefe('a) Wächter startet ein angehaltenes Skript', r.waechterPlan && r.waechter && m.state.cron >= 1, JSON.stringify({ plan: r.waechterPlan, w: r.waechter, cron: m.state.cron }));
+    const upd = m.world.jobs.filter((j) => j.calls.some((c) => c.method === 'Shelly.Update' && c.params.stage === 'stable'));
+    pruefe('a) Firmware-Update automatisch, täglich 03:23', r.updatePlan && upd.length === 1 && upd[0].enable === true &&
+      upd[0].timespec === '0 23 3 * * *' && m.world.jobs.length === 2, JSON.stringify(m.world.jobs));
     // erneutes Aufspielen: Wächter wird angehalten, Firmware ist aktuell
     const r2 = await deployShelly('http://127.0.0.1:' + m.port, code, () => {}, { ohneWaechter: true });
     pruefe('a) zweites Aufspielen ok, kein weiteres Update', r2.ok && m.state.updates === 1 &&
@@ -44,8 +48,9 @@ const mock = (opt) => new Promise((res) => startMock(res, opt));
     m.state.putFehler = 2;
     let fehler = '';
     try { await deployShelly('http://127.0.0.1:' + m.port, code, () => {}, { ohneWaechter: true }); } catch (e) { fehler = e.message; }
+    const wdJobs = m.world.jobs.filter((j) => j.calls.some((c) => c.method.toLowerCase() === 'script.start'));
     pruefe('a) Abbruch zweimal: Meldung, Wächter wieder an', /ohne laufendes neues Skript/.test(fehler) &&
-      m.world.jobs.length === 1 && m.world.jobs[0].enable === true, fehler + ' ' + JSON.stringify(m.world.jobs));
+      wdJobs.length === 1 && wdJobs[0].enable === true, fehler + ' ' + JSON.stringify(m.world.jobs));
   } catch (e) { pruefe('a) ohne Abbruch', false, e.stack); }
   m.close();
 
@@ -75,6 +80,27 @@ const mock = (opt) => new Promise((res) => startMock(res, opt));
       r.schritte.some((t) => /Access Point bleibt an/.test(t)), JSON.stringify(r.schritte));
   } catch (e) { pruefe('d) ohne Abbruch', false, e.stack); }
   m.close();
+
+  // e) neues Gerätepasswort setzen (ohne und mit altem Passwort): danach gilt nur noch das neue
+  for (const alt of [null, 'alt-test']) {
+    m = await mock(alt ? { pass: alt } : {});
+    const tag = 'e' + (alt ? '2' : '1') + ') ';
+    try {
+      const r = await deployShelly('http://127.0.0.1:' + m.port, code, () => {}, { pass: alt || undefined, neuesPasswort: 'neu-test', ohneWaechter: true });
+      pruefe(tag + 'Passwort gesetzt und mit ihm angemeldet', r.ok && r.passwortNeu && m.state.setAuth === 1 &&
+        r.schritte.some((t) => /Gerätepasswort gesetzt, Anmeldung damit geprüft/.test(t)), JSON.stringify(r.schritte));
+      const upd = m.world.jobs.find((j) => j.calls.some((c) => c.method === 'Shelly.Update'));
+      if (!alt) upd.enable = false;               // e1: Update in der App abgeschaltet – keine Fehlermeldung, bleibt aus
+      const r2 = await deployShelly('http://127.0.0.1:' + m.port, code, () => {}, { pass: 'neu-test', ohneWaechter: true });
+      pruefe(tag + 'erneutes Aufspielen mit dem neuen Passwort ok', r2.ok, JSON.stringify(r2.schritte));
+      if (!alt) pruefe(tag + 'abgeschaltetes Update: gemeldet, kein Fehler, bleibt aus', r2.ok && upd.enable === false &&
+        r2.schritte.some((t) => /aus \(in der App abgeschaltet\)/.test(t)), JSON.stringify(r2.schritte));
+      let fehler = '';
+      try { await deployShelly('http://127.0.0.1:' + m.port, code, () => {}, { pass: alt || 'leer', ohneWaechter: true }); } catch (e) { fehler = e.message; }
+      pruefe(tag + 'altes Passwort gilt nicht mehr', /Anmeldung abgelehnt/.test(fehler), fehler);
+    } catch (e) { pruefe(tag + 'ohne Abbruch', false, e.stack); }
+    m.close();
+  }
 
   console.log(ok ? '\nAUFSPIELEN: bestanden' : '\nAUFSPIELEN: FEHLER');
   process.exit(ok ? 0 : 1);

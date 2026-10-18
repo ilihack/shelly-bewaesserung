@@ -69,7 +69,9 @@ var Virtual = { getHandle: function (key) {
   return {
     getValue: function () { return __W.vc[key].value; },
     setValue: function (v) { __W.vc[key].value = v; },
-    on: function (ev, cb) { __W.vc[key].cb = cb; return 1; }
+    getStatus: function () { return __W.vc[key] ? { value: __W.vc[key].value } : undefined; },   // wie die Firmware
+    on: function (ev, cb) { __W.vc[key].cb = cb; return 1; },
+    off: function (id) { }
   };
 } };
 var Shelly = {

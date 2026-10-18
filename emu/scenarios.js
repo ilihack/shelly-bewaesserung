@@ -37,6 +37,9 @@ function runsInfo(w) { return w.runs().map(r => lt(w, r.on) + ' ' + (r.min ? r.m
 function logHas(w, re) { return w.logs.some(l => re.test(l.msg)); }
 function logsSince(w, t0) { return w.logs.filter(l => l.t >= t0).map(l => lt(w, l.t) + ' ' + l.msg).join('\n'); }
 function weatherConst(et0, rain, prob, tmin) { return () => ({ et0, rain: rain || 0, prob: prob || 0, tmin: tmin === undefined ? 14 : tmin }); }
+const hasCall = (j, m) => (j.calls || []).some(c => String(c.method).toLowerCase() === m);
+const wdJob = (w) => w.jobs.find(j => hasCall(j, 'script.start'));    // Wächter
+const upJob = (w) => w.jobs.find(j => hasCall(j, 'shelly.update'));   // Firmware-Update
 
 const scenarios = {};
 
@@ -543,7 +546,8 @@ scenarios.S28_led = function () {
   w.storage.s = JSON.stringify(Object.assign(JSON.parse(w.storage.s), { dp: dayNo(T(2027, 5, 31, 12)), d: 14 }));
   w.powerFail(1000); w.runFor(10 * M);
   const off = () => w.plugsUi.leds.colors['switch:0'].off;
-  check('S28 LED grün gedimmt, wenn alles gut', w.plugsUi.leds.mode === 'switch' && JSON.stringify(off().rgb) === '[0,100,0]' && off().brightness === 20, JSON.stringify(w.plugsUi.leds));
+  check('S28 LED grün, volle Helligkeit, wenn alles gut', w.plugsUi.leds.mode === 'switch' && JSON.stringify(off().rgb) === '[0,100,0]' &&
+    off().brightness === 100 && w.plugsUi.leds.colors['switch:0'].on.brightness === 100, JSON.stringify(w.plugsUi.leds));
   check('S28 LED blau, solange die Pumpe läuft', JSON.stringify(w.plugsUi.leds.colors['switch:0'].on.rgb) === '[0,0,100]');
   w.run(T(2027, 6, 1, 10, 20)); w.pump.mode = 'dry'; w.runFor(5 * M);
   check('S28 LED violett nach Störung', JSON.stringify(off().rgb) === '[100,0,100]', JSON.stringify(off()));
@@ -565,9 +569,12 @@ scenarios.S28_led = function () {
 scenarios.S29_waechter = function () {
   const w = mkWorld(T(2027, 6, 1, 6, 0), { weather: weatherConst(4.5) });
   w.runFor(5 * M);
-  check('S29 Wächter-Zeitplan angelegt', w.jobs.length === 1 && /script\.start/i.test(JSON.stringify(w.jobs[0].calls)), JSON.stringify(w.jobs));
+  check('S29 Wächter-Zeitplan angelegt', w.jobs.length === 2 && wdJob(w) && wdJob(w).enable === true, JSON.stringify(w.jobs));
+  const up = upJob(w);
+  check('S29 Firmware-Update angelegt: täglich 03:23, neueste stabile', up && up.enable === true && up.timespec === '0 23 3 * * *' &&
+    up.calls[0].params.stage === 'stable', JSON.stringify(w.jobs));
   w.powerFail(1000); w.runFor(5 * M);
-  check('S29 Neustart legt keinen zweiten an', w.jobs.length === 1, String(w.jobs.length));
+  check('S29 Neustart legt keine weiteren an', w.jobs.length === 2, String(w.jobs.length));
   w.run(T(2027, 6, 3, 12, 0));
   w.stopScript();
   w.run(T(2027, 6, 5, 9, 0));
@@ -599,7 +606,7 @@ scenarios.S30_regen_angekuendigt_nicht_gekommen = function () {
   w2.forecast = () => ({ rain: 12, prob: 90 });
   w2.powerFail(1000); w2.run(T(2027, 6, 1, 12, 30));
   check('S30b stündlich nachgesehen, Regen weiter erwartet: keine Gabe', w2.runs().length === 0 && /12:05 bestätigt/.test(w2.vcText()) &&
-    w2.logs.filter(l => /bestätigt/.test(l.msg)).length === 2, w2.vcText());
+    w2.logs.filter(l => /Tagesprüfung.*bestätigt/.test(l.msg)).length === 2, w2.vcText());
   w2.run(T(2027, 6, 2, 12, 0));
   const r2 = w2.runs();
   check('S30b Folgetag: Regen blieb aus, Prognose zählt nicht, volle Gabe', r2.length === 1 && berlinParts(r2[0].on).hh === 10 &&
@@ -760,16 +767,68 @@ scenarios.S37_skript_neustart_bei_geschaetzter_uhr = function () {
 
 // ------------------------------------------------------------------
 scenarios.S38_internet_ohne_zeitserver = function () {
-  // nach dem Stromausfall geht der Wetterdienst wieder, der Zeitserver nicht: die Uhr gilt weiter als geschätzt
+  // a) Zeitserver gesperrt (UDP 123), Wetterdienst geht: nach 6 h Stromausfall stellt die Uhrzeit aus dem Kopf der
+  //    Wetterantwort die Uhr binnen Minuten; gegossen wird zur richtigen Zeit
   const wx = () => ({ et0: 4.5, rain: 0, prob: 0, tmin: 10, tmax: 28 });
   const w = mkWorld(T(2027, 6, 1, 0, 0), { weather: wx });
   w.run(T(2027, 6, 4, 1, 0)); w.ntp = false; w.powerFail(6 * H);
-  w.run(T(2027, 6, 4, 12, 0));
-  check('S38 Wetterdienst da, Zeitserver nicht: „Uhr geschätzt“', /Uhr geschätzt/.test(w.vcText()), w.vcText());
-  w.run(T(2027, 6, 8, 0, 0));
-  const fix = w.logs.filter(l => /Uhr nach Tagesgang/.test(l.msg));
-  check('S38 Uhr trotzdem am Tagesgang gestellt', fix.length >= 1, logsSince(w, T(2027, 6, 4, 0, 0)).slice(-300));
-  common(w, 'S38');
+  w.run(T(2027, 6, 4, 7, 20));
+  check('S38 Zeitserver gesperrt: Uhr binnen 20 min aus dem Wetterdienst gestellt', logHas(w, /Uhr aus dem Wetterdienst gestellt/) &&
+    Math.abs(w.devUnix() - w.t / 1000) < 5 && !/Uhr geschätzt/.test(w.vcText()), w.vcText() + ' ' + (w.devUnix() - w.t / 1000));
+  w.run(T(2027, 6, 6, 23, 0));
+  const r = w.runs().filter(x => x.on > T(2027, 6, 4, 7, 0));
+  check('S38 danach um 10:00 gegossen', r.length >= 1 && r.every(x => berlinParts(x.on).hh === 10), runsInfo(w));
+  // b) Schätzung schon genau (Stromausfall 20 s, Anker frisch): bestätigt statt gestellt
+  const w2 = mkWorld(T(2027, 6, 1, 0, 0), { weather: wx });
+  w2.run(T(2027, 6, 2, 8, 0)); w2.ntp = false;
+  const st = JSON.parse(w2.storage.s); st.t = Math.floor(w2.t / 1000); w2.storage.s = JSON.stringify(st);
+  w2.powerFail(20e3); w2.runFor(20 * M);
+  check('S38b genaue Schätzung: vom Wetterdienst bestätigt', logHas(w2, /Uhr vom Wetterdienst bestätigt/) && !logHas(w2, /aus dem Wetterdienst gestellt/) &&
+    !/Uhr geschätzt/.test(w2.vcText()) && w2.state().ce === 0, w2.vcText());
+  // c) Antwort ohne Uhrzeit im Kopf: die Uhr bleibt geschätzt und wird am Tagesgang gestellt
+  const w3 = mkWorld(T(2027, 6, 1, 0, 0), { weather: wx });
+  w3.run(T(2027, 6, 4, 1, 0)); w3.ntp = false; w3.httpDate = false; w3.powerFail(6 * H);
+  w3.run(T(2027, 6, 4, 12, 0));
+  check('S38c ohne Uhrzeit im Kopf: „Uhr geschätzt“', /Uhr geschätzt/.test(w3.vcText()), w3.vcText());
+  w3.run(T(2027, 6, 8, 0, 0));
+  const fix = w3.logs.filter(l => /Uhr nach Tagesgang/.test(l.msg));
+  check('S38c Uhr trotzdem am Tagesgang gestellt', fix.length >= 1, logsSince(w3, T(2027, 6, 4, 0, 0)).slice(-300));
+  // d) Firmware meldet eine per Sys.SetTime gestellte Zeit nicht (unixtime bleibt leer): das Skript rechnet selbst richtig
+  const w4 = mkWorld(T(2027, 6, 1, 0, 0), { weather: wx });
+  w4.run(T(2027, 6, 4, 1, 0)); w4.ntp = false; w4.setTimeIgnored = true; w4.powerFail(6 * H);
+  w4.run(T(2027, 6, 6, 23, 0));
+  const r4 = w4.runs().filter(x => x.on > T(2027, 6, 4, 7, 0));
+  check('S38d gestellte Zeit nicht gemeldet: trotzdem um 10:00 gegossen, Uhr echt', w4.dev.clockBase === null && r4.length >= 1 &&
+    r4.every(x => berlinParts(x.on).hh === 10) && !/Uhr geschätzt/.test(w4.vcText()) &&
+    w4.logs.filter(l => /Uhr aus dem Wetterdienst gestellt/.test(l.msg)).length === 1, runsInfo(w4) + ' / ' + w4.vcText());
+  // e) Neustart um 22:00, der Zeitanker sagt 10:00; die Antwort des Tagesabrufs kommt vor der des Verbindungstests:
+  //    sie stellt die Uhr und wird verworfen, mit der echten Uhr ist 12:30 vorbei -> heute kein Lauf, morgen um 10:00
+  const isProbe = (url) => url.indexOf('daily=temperature_2m_min&timezone') > 0;
+  const w5 = learnedWorld(T(2027, 6, 4, 22, 0), wx);
+  w5.storage.s = JSON.stringify(Object.assign(JSON.parse(w5.storage.s), { t: Math.floor(T(2027, 6, 4, 10, 0) / 1000), tu: 1e7, ce: 1,
+    ev: dayNo(T(2027, 6, 3, 12)), dp: dayNo(T(2027, 6, 3, 12)), d: 14 }));
+  w5.ntp = false; w5.httpLat = (url) => (isProbe(url) ? 20000 : 400);
+  w5.powerFail(1000); w5.run(T(2027, 6, 5, 12, 0));
+  const r5 = w5.runs(), p5 = berlinParts(r5[0] ? r5[0].on : 0);
+  check('S38e Tagesabruf vor dem Verbindungstest: kein Lauf um 22:00, am Morgen um 10:00', r5.length === 1 && p5.d === 5 && p5.hh === 10 &&
+    logHas(w5, /Uhr aus dem Wetterdienst gestellt/), runsInfo(w5) + ' / ' + logsSince(w5, T(2027, 6, 4, 21, 59)).split('\n').slice(0, 12).join(' | '));
+  // f) Erststart ohne Internet und Zeitserver: Einstecken gilt als 15. April 10:00 (echt 20. April 07:02). Drei Tage
+  //    später kommt das Internet zurück, der Zeitserver nicht, der Verbindungstest scheitert; die erste Uhrzeit bringt
+  //    der Tagesabruf. Das Konto muss danach stimmen wie Tag für Tag gerechnet.
+  const w6 = mkWorld(T(2026, 4, 20, 7, 0), { weather: () => ({ et0: 3.0, rain: 0, prob: 0, tmin: 10, tmax: 22 }) });
+  w6.storage = { s: JSON.stringify({ v: 1, la: 49.48, lo: 8.45, pz: 'DELudwigshafen am Rhein', pn: 1320, ln: 3 }) };
+  w6.ntp = false; w6.internet = false; w6.powerFail(1000);
+  w6.run(T(2026, 4, 23, 6, 0)); w6.internet = true; w6.httpCode = (url) => (isProbe(url) ? 503 : 200);
+  w6.run(T(2026, 4, 24, 11, 0));
+  const g6 = {};
+  for (const r of w6.runs()) { const k = berlinParts(r.on).date; g6[k] = (g6[k] || 0) + (r.min || 0) / 60 * RATE; }
+  let d6 = 0;
+  for (const ds of ['2026-04-20', '2026-04-21', '2026-04-22', '2026-04-23']) d6 = Math.min(25, Math.max(0, d6 - (g6[ds] || 0)) + 3.0 * 0.85);
+  const e6 = w6.logs.filter(l => /Tagesprüfung/.test(l.msg) && berlinParts(l.t).date === '2026-04-24').map(l => l.msg);
+  const v6 = e6.length ? +(/Defizit ([\d.]+) mm/.exec(e6[e6.length - 1]) || [0, -9])[1] : -9;
+  check('S38f angenommenes Datum, Uhr aus dem Tagesabruf: Konto wie Tag für Tag gerechnet', logHas(w6, /Tagesmarken um 5 Tage verschoben/) &&
+    Math.abs(v6 - d6) <= 0.15, e6.join(' | ') + ' / unabhängig ' + d6.toFixed(2) + ' / ' + runsInfo(w6));
+  common(w, 'S38'); common(w2, 'S38b'); common(w3, 'S38c'); common(w4, 'S38d'); common(w5, 'S38e'); common(w6, 'S38f');
   return { runs: runsInfo(w) };
 };
 
@@ -959,26 +1018,33 @@ scenarios.S46_ueber_winter_ausgesteckt = function () {
 
 // ------------------------------------------------------------------
 scenarios.S47_zweite_instanz = function () {
-  // Wächter und Relais-Schutz stellt das Skript stündlich nach, auch wenn sie in der App verstellt wurden
+  // Wächter und Relais-Schutz stellt das Skript stündlich nach, auch wenn sie in der App verstellt wurden.
+  // Das Firmware-Update legt es nur an, wenn keines da ist: in der App abgeschaltet bleibt es aus.
   const w = mkWorld(T(2027, 6, 1, 6, 0), { weather: weatherConst(4.5) });
   w.runFor(5 * M);
-  const j0 = w.jobs[0] || {};
-  check('S47 Wächter alle 5 min, aktiv', w.jobs.length === 1 && j0.enable !== false && j0.timespec === '0 */5 * * * *', JSON.stringify(w.jobs));
+  const j0 = wdJob(w) || {};
+  check('S47 Wächter alle 5 min, aktiv', w.jobs.length === 2 && j0.enable !== false && j0.timespec === '0 */5 * * * *', JSON.stringify(w.jobs));
   const cw = w.cfgWrites;
   w.runFor(65 * M);
   check('S47 stündliches Nachstellen schreibt nichts, solange alles stimmt', w.cfgWrites === cw, cw + ' -> ' + w.cfgWrites);
-  j0.enable = false; j0.timespec = '0 50 * * * *';
+  j0.enable = false; j0.timespec = '0 50 * * * *'; upJob(w).enable = false;
   Object.assign(w.swCfg, { auto_off: false, initial_state: 'on', auto_on: true });
   w.runFor(61 * M);
-  const j1 = w.jobs[0] || {};
-  check('S47 binnen 1 h: Wächter wieder aktiv, alle 5 min', w.jobs.length === 1 && j1.enable === true && j1.timespec === '0 */5 * * * *', JSON.stringify(w.jobs));
+  const j1 = wdJob(w) || {};
+  check('S47 binnen 1 h: Wächter wieder aktiv, alle 5 min', w.jobs.length === 2 && j1.enable === true && j1.timespec === '0 */5 * * * *', JSON.stringify(w.jobs));
+  check('S47 Firmware-Update in der App abgeschaltet: bleibt aus', upJob(w).enable === false, JSON.stringify(w.jobs));
   check('S47 binnen 1 h: Notabschaltung an, Einschaltzustand aus, kein Wiedereinschalten', w.swCfg.auto_off === true &&
     w.swCfg.auto_off_delay === 9600 && w.swCfg.initial_state === 'off' && w.swCfg.auto_on === false, JSON.stringify(w.swCfg));
   w.jobs.length = 0;
   w.runFor(61 * M);
-  check('S47 gelöschter Wächter binnen 1 h neu angelegt', w.jobs.length === 1 && w.jobs[0].enable !== false &&
-    /script\.start/i.test(JSON.stringify(w.jobs[0].calls)), JSON.stringify(w.jobs));
-  common(w, 'S47');
+  check('S47 gelöschte Zeitpläne binnen 1 h neu angelegt', w.jobs.length === 2 && wdJob(w) && wdJob(w).enable === true &&
+    upJob(w) && upJob(w).enable === true, JSON.stringify(w.jobs));
+  // ein Update-Zeitplan aus der App (andere Uhrzeit) genügt: kein zweiter
+  const w2 = mkWorld(T(2027, 6, 1, 6, 0), { weather: weatherConst(4.5) });
+  w2.jobs.push({ id: 7, enable: true, timespec: '0 0 2 * * 1', calls: [{ method: 'Shelly.Update', params: { stage: 'stable' } }] });
+  w2.runFor(5 * M);
+  check('S47 Update-Zeitplan aus der App: kein zweiter', w2.jobs.length === 2 && upJob(w2).id === 7, JSON.stringify(w2.jobs));
+  common(w, 'S47'); common(w2, 'S47b');
 };
 
 // ------------------------------------------------------------------
@@ -998,12 +1064,20 @@ scenarios.S48_korrektur_nach_regen = function () {
   // ohne Pause, April: 20 mm Regen am ersten Tag ohne Wetterdienst, danach drei trockene Tage
   const wx2 = (ds) => ds === '2027-04-11' ? { et0: 1.0, rain: 20, prob: 90, tmin: 6, tmax: 12 } : { et0: 2.8, rain: 0, prob: 0, tmin: 6, tmax: 18 };
   const w2 = learnedWorld(T(2027, 4, 11, 6, 30), wx2);
-  w2.storage.s = JSON.stringify(Object.assign(JSON.parse(w2.storage.s), { dp: dayNo(T(2027, 4, 10, 12)), d: 3 }));
+  w2.storage.s = JSON.stringify(Object.assign(JSON.parse(w2.storage.s), { dp: dayNo(T(2027, 4, 10, 12)), d: 3, ob: 14, oa: 14 }));   // Eigenwärme gelernt
   w2.powerFail(1000); w2.runFor(3 * M);
   w2.httpFail = true; w2.run(T(2027, 4, 14, 22, 0));
   w2.httpFail = false; w2.run(T(2027, 4, 15, 10, 30));
   const ev2 = w2.logs.filter(l => /Tagesprüfung/.test(l.msg) && berlinParts(l.t).date === '2027-04-15').map(l => l.msg);
-  check('S48b April: Defizit 4,8 mm (3 × 2,38), nicht nur 2,4', ev2.length === 1 && /Defizit 4\.8 mm/.test(ev2[0]), ev2.join(' | '));
+  const giv = {};                       // unabhängig Tag für Tag gerechnet, mit dem tatsächlich Gegossenen (vor der Verdunstung)
+  for (const r of w2.runs()) { const k = berlinParts(r.on).date; giv[k] = (giv[k] || 0) + (r.min || 0) / 60 * RATE; }
+  let dd = 3;
+  for (const ds of ['2027-04-11', '2027-04-12', '2027-04-13', '2027-04-14']) {
+    const x = wx2(ds); dd = Math.min(25, Math.max(0, Math.max(0, dd - (giv[ds] || 0)) + x.et0 * 0.85 - Math.max(0, x.rain - 1)));
+  }
+  const got = ev2.length === 1 ? +(/Defizit ([\d.]+) mm/.exec(ev2[0]) || [0, -9])[1] : -9;
+  check('S48b April: Defizit wie Tag für Tag gerechnet, die trockenen Tage nach dem Regen zählen', Math.abs(got - dd) <= 0.15 && dd > 2,
+    ev2.join(' | ') + ' / unabhängig ' + dd.toFixed(2) + ' / ' + runsInfo(w2));
   common(w, 'S48'); common(w2, 'S48b');
 };
 
@@ -1074,6 +1148,59 @@ scenarios.S51_led_nach_fehler = function () {
   w.run(T(2027, 6, 2, 6, 0));
   check('S51 Fehler beim Zurückstellen: binnen 2 h doch grün', failed === 1 && off() === '[0,100,0]', failed + ' ' + off());
   common(w, 'S51');
+};
+
+// ------------------------------------------------------------------
+scenarios.S52_fehler_im_rueckruf = function () {
+  // Ein Fehler in einem Rückruf (hier: Shelly.call wirft, wie bei zu vielen offenen Aufrufen) darf das Skript nicht
+  // beenden. a) beim Start der Gabe in der Wetterantwort: verworfen, 20 min später nochmal, dann gegossen
+  const w = learnedWorld(T(2027, 6, 1, 6, 30));
+  w.storage.s = JSON.stringify(Object.assign(JSON.parse(w.storage.s), { dp: dayNo(T(2027, 5, 31, 12)), d: 14 }));
+  w.powerFail(1000); w.run(T(2027, 6, 1, 9, 59)); w.throwOnce = 'Switch.Set';
+  w.run(T(2027, 6, 1, 13, 0));
+  const r = w.runs(), p = berlinParts(r[0] ? r[0].on : 0);
+  check('S52 Fehler in der Wetterantwort: Skript läuft, 20 min später gegossen', !w.crashed && w.throwOnce === null &&
+    logHas(w, /Fehler Wetterantwort/) && r.length === 1 && p.hh === 10 && p.mm >= 20 && p.mm <= 22, runsInfo(w));
+  const ev = w.logs.filter(l => /Tagesprüfung/.test(l.msg));
+  check('S52 Konto nicht doppelt verbucht, volle Gabe 14 mm, keine Störung', ev.length === 2 && ev.every(l => /Defizit 14 mm/.test(l.msg)) &&
+    r.length === 1 && Math.abs(r[0].min - minFor(14)) < 1 && !logHas(w, /Störung/), ev.map(l => l.msg).join(' | ') + ' / ' + runsInfo(w));
+  // b) beim Anlegen des Wächters: binnen 1 h nachgeholt
+  const w2 = mkWorld(T(2027, 6, 1, 6, 0), { weather: weatherConst(4.5) });
+  w2.throwOnce = 'Schedule.Create'; w2.runFor(5 * M);
+  check('S52b Fehler beim Anlegen des Wächters: Skript läuft weiter', !w2.crashed && w2.jobs.length === 0 && logHas(w2, /Fehler im Rückruf/), JSON.stringify(w2.jobs));
+  w2.runFor(61 * M);
+  check('S52b binnen 1 h nachgeholt', w2.jobs.length === 2 && wdJob(w2) && upJob(w2), JSON.stringify(w2.jobs));
+  common(w, 'S52'); common(w2, 'S52b');
+};
+
+// ------------------------------------------------------------------
+scenarios.S53_bedienfeld_spaet = function () {
+  // Skript von Hand eingefügt und gestartet (ohne Aufspielwerkzeug, ohne Neustart): die Griffe der eben angelegten
+  // Bedienelemente kommen erst später. Die LED zeigt trotzdem den Zustand, gegossen wird ohnehin; das Bedienfeld
+  // bindet sich, sobald es geht. Fehlt ein Element (in der App gelöscht), wird es neu angelegt.
+  const w = mkWorld(T(2027, 6, 1, 6, 0), { weather: weatherConst(4.5) });
+  w.handleFail = 20; w.runFor(30e3);
+  check('S53 Griffe fehlen: Skript läuft ohne Bedienfeld', !w.crashed && logHas(w, /Bedienfeld unvollständig/) && !logHas(w, /Bedienfeld verbunden/), w.vcText());
+  w.runFor(3 * M);
+  check('S53 LED schon gesetzt, Bedienfeld noch nicht', w.ledWrites.length >= 1 && !logHas(w, /Bedienfeld verbunden/), String(w.ledWrites.length));
+  w.runFor(10 * M);
+  check('S53 binnen Minuten verbunden, Status sichtbar', logHas(w, /Bedienfeld verbunden/) && (w.vcText() || '').length > 5, w.vcText());
+  // im Betrieb in der App gelöscht (auch aus der Gruppe): erkannt, neu angelegt, wieder in der Gruppe, Eingaben wirken
+  delete w.vc['number:201']; w.vc['group:200'].value = w.vc['group:200'].value.filter(k => k !== 'number:201');
+  w.runFor(3 * M);
+  check('S53 im Betrieb gelöschtes Element: neu angelegt und wieder in der Gruppe', !!w.vc['number:201'] &&
+    w.vc['group:200'].value.indexOf('number:201') >= 0 && logHas(w, /Bedienfeld neu: fehlt/), Object.keys(w.vc).join(',') + ' ' + JSON.stringify(w.vc['group:200'].value));
+  w.setVc('number:201', 2); w.runFor(30e3);
+  check('S53 neues Element ist gebunden: Pause wirkt', logHas(w, /Pause bis/), logsSince(w, w.t - 60e3));
+  w.setVc('number:201', 0); w.runFor(30e3);
+  // nach einem Neustart fehlt ein Element: angelegt und gebunden
+  delete w.vc['number:202']; w.vc['group:200'].value = w.vc['group:200'].value.filter(k => k !== 'number:202');
+  w.restartScript(); w.runFor(3 * M);
+  check('S53 nach Neustart fehlendes Element angelegt, in der Gruppe', !!w.vc['number:202'] && w.vc['group:200'].value.indexOf('number:202') >= 0 &&
+    !logHas(w, /SKRIPT ABGESTÜRZT/), Object.keys(w.vc).join(','));
+  w.run(T(2027, 6, 4, 12, 0));
+  check('S53 gießt normal', w.runs().filter(r => r.src === 'loopback').length >= 1, runsInfo(w));
+  common(w, 'S53');
 };
 
 // ------------------------------------------------------------------

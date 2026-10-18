@@ -273,6 +273,7 @@ class World {
     };
     const handle = (key) => {
       if (!w.vc[key]) return null;
+      if (w.handleFail > 0) { w.handleFail--; return null; }   // Test: Handle noch nicht da (frisch angelegt)
       if (dev.vcHandles[key]) return dev.vcHandles[key];
       const h = {
         listeners: {},
@@ -283,8 +284,10 @@ class World {
         getConfig() { const c = w.vc[key]; return c ? JSON.parse(JSON.stringify(c.config)) : undefined; },
         setConfig(cfg) { Object.assign(w.vc[key].config, cfg); w.cfgWrites++; },
         getStatus() { const c = w.vc[key]; return c ? { value: c.value } : undefined; },
-        on(ev, cb) { dev.handlers++; w.limits.handlers = Math.max(w.limits.handlers, dev.handlers); if (dev.handlers > 5) throw new Error('Handler-Limit'); (this.listeners[ev] = this.listeners[ev] || []).push(guard(cb)); return 1; },
-        off() { return true; }
+        on(ev, cb) { dev.handlers++; w.limits.handlers = Math.max(w.limits.handlers, dev.handlers); if (dev.handlers > 5) throw new Error('Handler-Limit');
+          const id = ++w.seq, f = guard(cb); f.id = id; (this.listeners[ev] = this.listeners[ev] || []).push(f); return id; },
+        off(id) { for (const ev of Object.keys(this.listeners)) { const n = this.listeners[ev].length;
+          this.listeners[ev] = this.listeners[ev].filter(f => f.id !== id); if (this.listeners[ev].length < n) dev.handlers--; } }
       };
       dev.vcHandles[key] = h;
       return h;
@@ -315,9 +318,10 @@ class World {
         const c = w.vc[type + ':' + id]; return c ? Object.assign({ id }, JSON.parse(JSON.stringify(c.config))) : null;
       },
       call(method, params, cb, ud) {
+        if (w.throwOnce === method) { w.throwOnce = null; throw new Error('Too many calls in progress'); }   // Test
         if (dev.rpcOpen >= 5) throw new Error('RPC-Limit 5 überschritten (' + method + ')');
         dev.rpcOpen++; w.limits.rpc = Math.max(w.limits.rpc, dev.rpcOpen);
-        let res = null, err = 0, msg = '', lat = 30;
+        let res = null, err = 0, msg = '', lat = 30, post = null;
         try {
           switch (method) {
             case 'Switch.Set': {
@@ -331,8 +335,10 @@ class World {
               if (!err) { Object.assign(w.swCfg, params.config); w.cfgWrites++; res = { restart_required: false }; }
               break;
             }
-            case 'Sys.SetTime': {
-              if (!dev.ntpSynced) { dev.clockBase = params.unixtime * 1000; dev.clockUp = w.uptime(dev); }
+            case 'Sys.SetTime': {             // wirkt erst, wenn der Aufruf durch ist (wie ein echter RPC);
+              post = () => {                  // w.setTimeIgnored: Firmware, die eine gestellte Zeit nicht als unixtime meldet
+                if (!dev.ntpSynced && !w.setTimeIgnored) { dev.clockBase = params.unixtime * 1000; dev.clockUp = w.uptime(dev); }
+              };
               res = null; break;
             }
             case 'Virtual.Add': {
@@ -362,15 +368,17 @@ class World {
               Object.assign(job, JSON.parse(JSON.stringify(params))); w.cfgWrites++; res = { rev: w.jobs.length }; break;
             }
             case 'HTTP.GET': {
-              lat = 400;
+              lat = w.httpLat ? w.httpLat(params.url) : 400;   // Test: Antworten in anderer Reihenfolge
               w.http.push({ t: w.t, url: params.url });
               if (!w.internet || w.httpFail) { err = -1; msg = 'Failed to connect'; lat = (params.timeout || 10) * 1000; break; }
-              res = { code: 200, body: params.url.indexOf('geocoding-api') > 0 ? w.geoBody(params.url) : w.weatherBody(params.url) }; break;
+              const code = w.httpCode ? w.httpCode(params.url) : 200;      // Test: der Dienst antwortet mit einem Fehler
+              res = { code, message: code === 200 ? 'OK' : 'Service Unavailable', headers: w.httpDate === false ? {} : { date: new Date(w.t + 300).toUTCString() },   // Serverzeit
+                body: code !== 200 ? '' : params.url.indexOf('geocoding-api') > 0 ? w.geoBody(params.url) : w.weatherBody(params.url) }; break;
             }
             default: err = -114; msg = 'Method ' + method + ' not found';
           }
         } catch (e) { err = -1; msg = String(e); }
-        w.after(lat, () => { dev.rpcOpen--; if (cb) guard(cb)(res, err, msg, ud); }, dev);
+        w.after(lat, () => { dev.rpcOpen--; if (post) post(); if (cb) guard(cb)(res, err, msg, ud); }, dev);
       },
       emitEvent() {}
     };

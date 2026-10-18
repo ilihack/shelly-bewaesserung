@@ -4,7 +4,8 @@
  * POST /rpc beantwortet die RPCs, die tools/deploy.js braucht; Script.Start lässt den hochgeladenen
  * Code im Emulator wirklich laufen. GET / liefert eine leere Seite (gleiche Herkunft für den Browserweg).
  * Die Emulator-Zeit läuft mit der echten Zeit mit.
- * Optionen: pass = Gerätepasswort (Digest SHA-256 wie Firmware 2.x, Shelly-Doku General/Authentication),
+ * Optionen: pass = Gerätepasswort (Digest SHA-256 wie Firmware 2.x, Shelly-Doku General/Authentication;
+ *           Shelly.SetAuth setzt es zur Laufzeit neu),
  *           https = http leitet auf https um (selbst signiert, wie ab Firmware 2.0 ab Werk),
  *           cronMs = so oft feuern die Zeitpläne (statt alle 5 min), apOffen = offener Access Point,
  *           updateFehler = das Firmware-Update scheitert, ohneWlan = nur der eigene Access Point, kein Heim-WLAN.
@@ -27,12 +28,17 @@ function startMock(done, opt) {
   w.runFor(5000);
   const dev = w.dev;
   const REALM = 'shellyoutdoorsg3-test', NEU = '2.1.0';
-  const st = { scripts: [], matter: true, putCount: 0, ver: '1.7.1', ap: opt.apOffen !== false, nonces: {}, authFehler: 0, cron: 0 };
+  const st = { scripts: [], matter: true, putCount: 0, ver: '1.7.1', ap: opt.apOffen !== false, nonces: {}, authFehler: 0, cron: 0,
+    ha1: opt.pass ? sha('admin:' + REALM + ':' + opt.pass) : null };
   function stopScript() {
     dev.scriptGen = (dev.scriptGen || 0) + 1; dev.timers = {}; dev.nTimers = 0; dev.handlers = 0; dev.vcHandles = {}; dev.rpcOpen = 0;
   }
   const handlers = {
-    'Shelly.GetDeviceInfo': () => ({ id: REALM, model: 'S3PL-20112EU', gen: 3, app: 'OutdoorPlugSG3', ver: st.ver, auth_en: !!opt.pass, auth_domain: REALM }),
+    'Shelly.GetDeviceInfo': () => ({ id: REALM, model: 'S3PL-20112EU', gen: 3, app: 'OutdoorPlugSG3', ver: st.ver, auth_en: !!st.ha1, auth_domain: REALM }),
+    'Shelly.SetAuth': (p) => {                 // Shelly-Doku: user immer admin, realm = Geräte-ID, ha1 = SHA256(user:realm:pass)
+      if (p.user !== 'admin' || p.realm !== REALM || !/^[0-9a-f]{64}$/.test(p.ha1 || '')) throw new Error('bad auth params');
+      st.ha1 = p.ha1; st.setAuth = (st.setAuth || 0) + 1; return null;
+    },
     'Shelly.CheckForUpdate': () => (st.ver === NEU ? {} : { stable: { version: NEU, build_id: 'test' } }),
     'Shelly.Update': () => {
       if (opt.updateFehler) throw new Error('download failed');
@@ -86,8 +92,8 @@ function startMock(done, opt) {
     if (!a || n === undefined || a.realm !== REALM || a.username !== 'admin' || a.algorithm !== 'SHA-256') return false;
     const nc = parseInt(a.nc, 16);
     if (!(nc > n)) return false;
-    const ha1 = sha('admin:' + REALM + ':' + opt.pass), ha2 = sha('POST:/rpc');
-    if (a.response !== sha(ha1 + ':' + a.nonce + ':' + a.nc + ':' + a.cnonce + ':auth:' + ha2)) return false;
+    const ha2 = sha('POST:/rpc');
+    if (a.response !== sha(st.ha1 + ':' + a.nonce + ':' + a.nc + ':' + a.cnonce + ':auth:' + ha2)) return false;
     st.nonces[a.nonce] = nc;
     return true;
   }
@@ -101,7 +107,7 @@ function startMock(done, opt) {
     req.on('data', d => body += d);
     req.on('end', () => {
       const f = JSON.parse(body);
-      if (opt.pass && f.method !== 'Shelly.GetDeviceInfo' && !authOk(f)) {
+      if (st.ha1 && f.method !== 'Shelly.GetDeviceInfo' && !authOk(f)) {
         if (f.auth) st.authFehler++;
         const nonce = crypto.randomBytes(24).toString('base64');
         st.nonces[nonce] = 0;
