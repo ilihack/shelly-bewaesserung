@@ -1,10 +1,10 @@
-  Aufspielen gestartet, 22672 Byte
+  Aufspielen gestartet, 23914 Byte
   [Konsole] Gerät: S3PL-20112EU (OutdoorPlugSG3), Firmware 1.7.1, Gen 3
-  [Konsole] Firmware 1.7.1 älter als 2.0.1 – Update auf stabil wird angestoßen
-  [Konsole] Firmware jetzt 2.0.3
+  [Konsole] Firmware 1.7.1 -> 2.1.0 (neueste stabile) wird installiert
+  [Konsole] Firmware jetzt 2.1.0
   [Konsole] Matter abgeschaltet
   [Konsole] Skriptplatz angelegt: 1
-  [Konsole] Code hochgeladen: 22672 Byte
+  [Konsole] Code hochgeladen: 23914 Byte in 24 Stücken
   [Konsole] Autostart an
   [Konsole] Selbsttest im Skript (Ort, Wetter 15 Tage): ok, Ort 49.48 8.45
   [Konsole] Skript läuft: true, Speicher 12000 (Spitze 14000, frei 60000, Reserve in der Spitze 58000)
@@ -13,6 +13,11 @@
   [Konsole] Status: Heute nicht geprüft, nächste Prüfung morgen 10:00
   [Konsole] Uhr: 2026-10-19T13:00:55.000Z
   [Konsole] Wetterdienst vom Gerät: ok 2026-10-19: ET0 4 mm gestern
+  [Konsole] offenen Access Point abgeschaltet
+  [Konsole] Sicherheit: Gerätepasswort AUS – Empfehlung: in der App setzen, Access Point aus, Steuerung über Bluetooth aus
+  [Konsole] Wächter-Zeitplan: alle 5 min, aktiv
+  [Konsole] Wächtertest: Skript angehalten, warte bis zu 5,5 min
+  [Konsole] Wächter: Skript nach 5 s wieder gestartet
   [Konsole] FERTIG – alles in Ordnung
 
 BROWSERWEG: bestanden

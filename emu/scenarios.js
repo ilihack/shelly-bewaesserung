@@ -187,11 +187,11 @@ scenarios.S08_blockiert = function () {
   const w = learnedWorld(T(2027, 6, 1, 6, 30));
   w.storage.s = JSON.stringify(Object.assign(JSON.parse(w.storage.s), { dp: dayNo(T(2027, 5, 31, 12)), d: 14 }));
   w.pump.mode = 'blocked';
-  w.powerFail(1000); w.run(T(2027, 6, 1, 10, 10));
+  w.powerFail(1000); w.run(T(2027, 6, 1, 10, 3));
   const r = w.runs()[0];
   check('S08 Blockade binnen 5 s abgeschaltet (Firmware 12 A)', r && r.off && (r.off - r.on) < 5e3, r ? ((r.off - r.on) / 1000).toFixed(1) + ' s' : '');
   const st = w.state();
-  check('S08 ein Nachlauf geplant', st.rt > 0, JSON.stringify(st));
+  check('S08 Störung beim Anlauf: ein Nachlauf nach 6 min geplant', st.rt > 0 && Math.abs(st.rt * 1000 - r.off - 6 * M) < 2e3, JSON.stringify(st));
   w.run(T(2027, 6, 1, 12, 0));
   check('S08 nach Nachlauf Schluss für heute', w.runs().length === 2 && w.state().rt === 0, runsInfo(w));
   // Variante: Firmware-Grenze höher (falls Werkseinstellung anders) -> Skript schaltet selbst
@@ -319,18 +319,30 @@ scenarios.S15_saison = function () {
 
 // ------------------------------------------------------------------
 scenarios.S16_frost = function () {
-  const w = learnedWorld(T(2027, 4, 10, 6, 30), () => ({ et0: 3, rain: 0, prob: 0, tmin: 1 }));
+  // a) Frostnacht, kalter Tag (Luft bleibt unter 5 °C): bis 12:30 keine Automatik
+  const w = learnedWorld(T(2027, 4, 10, 6, 30), () => ({ et0: 3, rain: 0, prob: 0, tmin: 1, tmax: 4 }));
   w.storage.s = JSON.stringify(Object.assign(JSON.parse(w.storage.s), { dp: dayNo(T(2027, 4, 9, 12)), d: 14 }));
-  w.powerFail(1000); w.run(T(2027, 4, 10, 12, 0));
-  check('S16 Frostprognose: kein Lauf', w.runs().length === 0, runsInfo(w));
-  check('S16 Status Frostsperre', /Frostsperre/.test(w.vcText()), w.vcText());
+  w.currentTemp = () => 3;
+  w.powerFail(1000); w.run(T(2027, 4, 10, 13, 0));
+  check('S16 Frostnacht, Luft bleibt kalt: kein Lauf', w.runs().length === 0, runsInfo(w));
+  check('S16 Status Frostsperre bis 5 °C', /Frostsperre \(1 °C\), gießt ab 5 °C/.test(w.vcText()), w.vcText());
+  check('S16 stündlich nachgesehen (11:05, 12:05)', w.http.filter(h => h.t > T(2027, 4, 10, 10, 30) && /past_days=0/.test(h.url)).length === 2,
+    w.http.map(h => lt(w, h.t)).join(' '));
+  // c) Frostnacht, um 11 Uhr 7 °C: Nachprüfung 11:05 gießt
+  const w3 = learnedWorld(T(2027, 4, 10, 6, 30), () => ({ et0: 3, rain: 0, prob: 0, tmin: 1, tmax: 12 }));
+  w3.storage.s = JSON.stringify(Object.assign(JSON.parse(w3.storage.s), { dp: dayNo(T(2027, 4, 9, 12)), d: 14 }));
+  w3.currentTemp = (t) => (berlinParts(t).hh < 11 ? 3 : 7);
+  w3.powerFail(1000); w3.run(T(2027, 4, 10, 13, 0));
+  const r3 = w3.runs(), p3 = berlinParts(r3[0] ? r3[0].on : 0);
+  check('S16c Frost vorbei: um 11:05 gegossen', r3.length === 1 && p3.hh === 11 && p3.mm >= 5 && p3.mm <= 6 &&
+    logHas(w3, /Frost vorbei, gegossen/), runsInfo(w3));
   const w2 = learnedWorld(T(2027, 4, 10, 6, 30), () => ({ et0: 3, rain: 0, prob: 0, tmin: 8 }));
   w2.ambient = () => 0;
   w2.storage.s = JSON.stringify(Object.assign(JSON.parse(w2.storage.s), { dp: dayNo(T(2027, 4, 9, 12)), d: 14 }));
   w2.internet = false;
   w2.powerFail(1000); w2.run(T(2027, 4, 10, 12, 0));
   check('S16b ohne Internet, Gerät kalt: kein Lauf', w2.runs().length === 0, runsInfo(w2));
-  common(w, 'S16'); common(w2, 'S16b');
+  common(w, 'S16'); common(w2, 'S16b'); common(w3, 'S16c');
 };
 
 // ------------------------------------------------------------------
@@ -464,8 +476,9 @@ scenarios.S26_taster_sperren_spaete_pruefung = function () {
   w2.press(); w2.runFor(2 * M);
   check('S26 Pause: keine Automatik, Taster startet', vorher2 === 0 && w2.dev.output === true, runsInfo(w2));
   // c) Frostsperre: keine Automatik, Taster startet
-  const w3 = learnedWorld(T(2027, 4, 10, 6, 30), () => ({ et0: 3, rain: 0, prob: 0, tmin: 1 }));
+  const w3 = learnedWorld(T(2027, 4, 10, 6, 30), () => ({ et0: 3, rain: 0, prob: 0, tmin: 1, tmax: 4 }));
   w3.storage.s = JSON.stringify(Object.assign(JSON.parse(w3.storage.s), { dp: dayNo(T(2027, 4, 9, 12)), d: 14 }));
+  w3.currentTemp = () => 3;
   w3.powerFail(1000); w3.run(T(2027, 4, 10, 12, 0));
   const vorher3 = w3.runs().length;
   w3.press(); w3.runFor(2 * M);
@@ -530,17 +543,17 @@ scenarios.S28_led = function () {
   w.storage.s = JSON.stringify(Object.assign(JSON.parse(w.storage.s), { dp: dayNo(T(2027, 5, 31, 12)), d: 14 }));
   w.powerFail(1000); w.runFor(10 * M);
   const off = () => w.plugsUi.leds.colors['switch:0'].off;
-  check('S28 LED aus, wenn alles gut', w.plugsUi.leds.mode === 'switch' && off().brightness === 0, JSON.stringify(w.plugsUi.leds));
+  check('S28 LED grün gedimmt, wenn alles gut', w.plugsUi.leds.mode === 'switch' && JSON.stringify(off().rgb) === '[0,100,0]' && off().brightness === 20, JSON.stringify(w.plugsUi.leds));
   check('S28 LED blau, solange die Pumpe läuft', JSON.stringify(w.plugsUi.leds.colors['switch:0'].on.rgb) === '[0,0,100]');
   w.run(T(2027, 6, 1, 10, 20)); w.pump.mode = 'dry'; w.runFor(5 * M);
   check('S28 LED violett nach Störung', JSON.stringify(off().rgb) === '[100,0,100]', JSON.stringify(off()));
   w.pump.mode = 'normal';
   w.run(T(2027, 6, 2, 0, 10));
-  check('S28 LED am nächsten Tag wieder aus', off().brightness === 0, JSON.stringify(off()));
+  check('S28 LED am nächsten Tag wieder grün', JSON.stringify(off().rgb) === '[0,100,0]', JSON.stringify(off()));
   w.internet = false; w.run(T(2027, 6, 3, 12, 0));
   check('S28 LED gelb ohne Internet', JSON.stringify(off().rgb) === '[100,70,0]', JSON.stringify(off()));
   w.internet = true; w.run(T(2027, 6, 4, 12, 0));
-  check('S28 LED aus, sobald Internet zurück ist', off().brightness === 0, JSON.stringify(off()));
+  check('S28 LED grün, sobald Internet zurück ist', JSON.stringify(off().rgb) === '[0,100,0]', JSON.stringify(off()));
   const n = w.ledWrites.length; w.powerFail(1000); w.runFor(30 * M);
   check('S28 Neustart schreibt die LED nicht neu', w.ledWrites.length === n, n + ' -> ' + w.ledWrites.length);
   check('S28 wenige LED-Schreibvorgänge', w.ledWrites.length <= 6, String(w.ledWrites.length));
@@ -629,20 +642,25 @@ scenarios.S31_wochenlang_ohne_wetterdienst = function () {
 // ------------------------------------------------------------------
 scenarios.S32_frost_ohne_internet_eigenwaerme = function () {
   // Gerät mit 25 K Eigenwärme: lernt sie online, erkennt ohne Internet eine Frostnacht und eine milde Nacht
-  const wx = (ds) => ds === '2027-04-06' ? { et0: 2.6, rain: 0, prob: 0, tmin: 0.5, tmax: 12 } :
+  const wx = (ds) => ds === '2027-04-06' ? { et0: 2.6, rain: 0, prob: 0, tmin: 0.5, tmax: 6 } :
     (ds === '2027-04-07' ? { et0: 2.6, rain: 0, prob: 0, tmin: 9, tmax: 20 } : { et0: 2.6, rain: 0, prob: 0, tmin: 8, tmax: 18 });
   const w = mkWorld(T(2027, 4, 1, 0, 0), { weather: wx, selfHeat: 25 });
   w.run(T(2027, 4, 5, 12, 0));
   const st = w.state();
   check('S32 Eigenwärme gelernt (Tief ~25 K, Hoch ~25 K)', Math.abs(st.ob - 25) <= 1.5 && Math.abs(st.oa - 25) <= 1.5, JSON.stringify({ ob: st.ob, oa: st.oa }));
-  w.storage.s = JSON.stringify(Object.assign(JSON.parse(w.storage.s), { d: 14 })); w.restartScript();
+  w.storage.s = JSON.stringify(Object.assign(JSON.parse(w.storage.s), { d: 14, pi: 0 })); w.restartScript();
   w.run(T(2027, 4, 5, 20, 0)); w.httpFail = true;
-  w.run(T(2027, 4, 6, 12, 0));
+  w.ambient = (t) => (t < T(2027, 4, 6, 11, 30) ? 1 : 8);   // Frostnacht, bis 11:30 kalt, danach klar über 5 °C
+  w.run(T(2027, 4, 6, 11, 30));
   const r6 = w.runs().filter(r => berlinParts(r.on).date === '2027-04-06');
-  check('S32 Frostnacht ohne Internet (0,5 °C, Gerät ~25 °C): kein Lauf', r6.length === 0 && /Frostsperre \(geschätzt/.test(w.vcText()), w.vcText());
+  check('S32 Frostnacht ohne Internet (1 °C, Gerät ~26 °C): vormittags kein Lauf', r6.length === 0 && /Frostsperre \(geschätzt/.test(w.vcText()), w.vcText());
+  w.run(T(2027, 4, 6, 13, 0)); w.ambient = null;
+  const r6b = w.runs().filter(r => berlinParts(r.on).date === '2027-04-06'), p6 = berlinParts(r6b[0] ? r6b[0].on : 0);
+  check('S32 ohne Internet: gegossen, sobald der Gerätefühler 5 °C Luft zeigt (12:05)', r6b.length === 1 && p6.hh === 12 && p6.mm >= 5 && p6.mm <= 6,
+    runsInfo(w));
   w.run(T(2027, 4, 7, 12, 0));
-  const r7 = w.runs().filter(r => berlinParts(r.on).date === '2027-04-07');
-  check('S32 milde Nacht ohne Internet (9 °C): gegossen', r7.length === 1, runsInfo(w));
+  const ev7 = w.logs.filter(l => /Tagesprüfung/.test(l.msg) && berlinParts(l.t).date === '2027-04-07').map(l => l.msg).join(' | ');
+  check('S32 milde Nacht ohne Internet (9 °C): keine Frostsperre', ev7 !== '' && !/Frostsperre/.test(ev7), ev7);
   common(w, 'S32');
 };
 
@@ -840,16 +858,16 @@ scenarios.S42_frostwert_fehlt = function () {
   w.storage.s = JSON.stringify(Object.assign(JSON.parse(w.storage.s), { dp: dayNo(T(2027, 4, 8, 12)), d: 14, ob: 14, oa: 14 }));
   w.forecast = () => ({ tmin: null });
   w.powerFail(1000); w.run(T(2027, 4, 10, 6, 30)); w.powerFail(1000); w.run(T(2027, 4, 10, 12, 0));
-  const ev = w.logs.filter(l => /Tagesprüfung/.test(l.msg)).map(l => l.msg);
-  check('S42 Tiefstwert fehlt: Frostsperre über den Gerätefühler', w.runs().length === 0 && /Frostsperre \(geschätzt/.test(ev.join('|')),
-    ev.join(' | '));
+  const ev = w.logs.filter(l => /Tagesprüfung/.test(l.msg)).map(l => l.msg), r = w.runs();
+  check('S42 Tiefstwert fehlt: Frostsperre über den Gerätefühler, gegossen erst ab 5 °C Luft', /Frostsperre \(geschätzt/.test(ev[0] || '') &&
+    r.length >= 1 && berlinParts(r[0].on).hh >= 11 && w.ambientAt(r[0].on) >= 5, ev.join(' | ') + ' / ' + runsInfo(w));
   common(w, 'S42');
 };
 
 // ------------------------------------------------------------------
 scenarios.S43_anlauf_und_wiedereinschalten = function () {
   // a) Überstromschutz der Firmware schaltet beim Anlauf binnen 0,4 s ab, zwischen zwei Takten des Skripts:
-  //    als Störung werten, Nachlauf nach 60 min, die Automatik muss an den Folgetagen weiterlaufen
+  //    als Störung werten, Nachlauf nach 6 min, die Automatik muss an den Folgetagen weiterlaufen
   const w = learnedWorld(T(2027, 6, 1, 6, 30));
   w.storage.s = JSON.stringify(Object.assign(JSON.parse(w.storage.s), { dp: dayNo(T(2027, 5, 31, 12)), d: 14 }));
   w.pump.mode = 'anlauf';
@@ -861,7 +879,7 @@ scenarios.S43_anlauf_und_wiedereinschalten = function () {
   check('S43 LED violett', JSON.stringify(off().rgb) === '[100,0,100]', JSON.stringify(off()));
   w.run(T(2027, 6, 3, 13, 0));
   const r = w.runs(), p1 = berlinParts(r[1] ? r[1].on : 0);
-  check('S43 Nachlauf nach 60 min mit voller Menge', r.length >= 2 && p1.d === 1 && p1.hh === 11 && p1.mm <= 2 &&
+  check('S43 Nachlauf nach 6 min mit voller Menge', r.length >= 2 && p1.d === 1 && p1.hh === 10 && p1.mm >= 6 && p1.mm <= 7 &&
     Math.abs(r[1].min - minFor(14)) < 1.5, runsInfo(w));
   const ev = w.logs.filter(l => /Tagesprüfung/.test(l.msg)).map(l => berlinParts(l.t).d);
   check('S43 Tagesprüfung an den Folgetagen', ev.indexOf(2) >= 0 && ev.indexOf(3) >= 0, ev.join(','));
@@ -937,6 +955,125 @@ scenarios.S46_ueber_winter_ausgesteckt = function () {
   const ev = w.logs.filter(l => /Tagesprüfung/.test(l.msg)).map(l => l.msg);
   check('S46 Konto neu: 14 Tage April, Regen am 8.', ev.length === 1 && /Defizit 2\.4 mm/.test(ev[0]), ev.join(' | '));
   common(w, 'S46');
+};
+
+// ------------------------------------------------------------------
+scenarios.S47_zweite_instanz = function () {
+  // Wächter und Relais-Schutz stellt das Skript stündlich nach, auch wenn sie in der App verstellt wurden
+  const w = mkWorld(T(2027, 6, 1, 6, 0), { weather: weatherConst(4.5) });
+  w.runFor(5 * M);
+  const j0 = w.jobs[0] || {};
+  check('S47 Wächter alle 5 min, aktiv', w.jobs.length === 1 && j0.enable !== false && j0.timespec === '0 */5 * * * *', JSON.stringify(w.jobs));
+  const cw = w.cfgWrites;
+  w.runFor(65 * M);
+  check('S47 stündliches Nachstellen schreibt nichts, solange alles stimmt', w.cfgWrites === cw, cw + ' -> ' + w.cfgWrites);
+  j0.enable = false; j0.timespec = '0 50 * * * *';
+  Object.assign(w.swCfg, { auto_off: false, initial_state: 'on', auto_on: true });
+  w.runFor(61 * M);
+  const j1 = w.jobs[0] || {};
+  check('S47 binnen 1 h: Wächter wieder aktiv, alle 5 min', w.jobs.length === 1 && j1.enable === true && j1.timespec === '0 */5 * * * *', JSON.stringify(w.jobs));
+  check('S47 binnen 1 h: Notabschaltung an, Einschaltzustand aus, kein Wiedereinschalten', w.swCfg.auto_off === true &&
+    w.swCfg.auto_off_delay === 9600 && w.swCfg.initial_state === 'off' && w.swCfg.auto_on === false, JSON.stringify(w.swCfg));
+  w.jobs.length = 0;
+  w.runFor(61 * M);
+  check('S47 gelöschter Wächter binnen 1 h neu angelegt', w.jobs.length === 1 && w.jobs[0].enable !== false &&
+    /script\.start/i.test(JSON.stringify(w.jobs[0].calls)), JSON.stringify(w.jobs));
+  common(w, 'S47');
+};
+
+// ------------------------------------------------------------------
+scenarios.S48_korrektur_nach_regen = function () {
+  // Wetterdienst 6 Tage weg, Pause (kein Gießen), am 2. Tag 25 mm Regen: die Korrektur rechnet die Tage neu,
+  // der Regen setzt das Konto auf 0, die vier trockenen Tage danach zählen wieder (unabhängig: 4 × 3,825 = 15,3 mm)
+  const wx = (ds) => ds === '2027-06-02' ? { et0: 2.0, rain: 25, prob: 90, tmin: 14, tmax: 20 } : { et0: 4.5, rain: 0, prob: 0, tmin: 14, tmax: 24 };
+  const w = learnedWorld(T(2027, 6, 1, 6, 30), wx);
+  w.storage.s = JSON.stringify(Object.assign(JSON.parse(w.storage.s), { dp: dayNo(T(2027, 5, 31, 12)), d: 0 }));
+  w.powerFail(1000); w.runFor(3 * M);
+  w.setVc('number:201', 6); w.runFor(30e3);
+  w.httpFail = true; w.run(T(2027, 6, 6, 22, 0));
+  w.httpFail = false; w.run(T(2027, 6, 7, 11, 0));
+  const ev = w.logs.filter(l => /Tagesprüfung/.test(l.msg) && berlinParts(l.t).date === '2027-06-07').map(l => l.msg);
+  check('S48 nach der Rückkehr: Defizit 15,3 mm wie Tag für Tag gerechnet, gegossen', ev.length === 1 && /Defizit 15\.3 mm/.test(ev[0]) &&
+    /gegossen/.test(ev[0]), ev.join(' | '));
+  // ohne Pause, April: 20 mm Regen am ersten Tag ohne Wetterdienst, danach drei trockene Tage
+  const wx2 = (ds) => ds === '2027-04-11' ? { et0: 1.0, rain: 20, prob: 90, tmin: 6, tmax: 12 } : { et0: 2.8, rain: 0, prob: 0, tmin: 6, tmax: 18 };
+  const w2 = learnedWorld(T(2027, 4, 11, 6, 30), wx2);
+  w2.storage.s = JSON.stringify(Object.assign(JSON.parse(w2.storage.s), { dp: dayNo(T(2027, 4, 10, 12)), d: 3 }));
+  w2.powerFail(1000); w2.runFor(3 * M);
+  w2.httpFail = true; w2.run(T(2027, 4, 14, 22, 0));
+  w2.httpFail = false; w2.run(T(2027, 4, 15, 10, 30));
+  const ev2 = w2.logs.filter(l => /Tagesprüfung/.test(l.msg) && berlinParts(l.t).date === '2027-04-15').map(l => l.msg);
+  check('S48b April: Defizit 4,8 mm (3 × 2,38), nicht nur 2,4', ev2.length === 1 && /Defizit 4\.8 mm/.test(ev2[0]), ev2.join(' | '));
+  common(w, 'S48'); common(w2, 'S48b');
+};
+
+// ------------------------------------------------------------------
+scenarios.S49_frost_eigenwaerme_ungelernt = function () {
+  // neues Gerät ohne Internet, Eigenwärme noch nicht gelernt, Frostnacht: die Luft lässt sich nicht schätzen, also warten
+  const wx = (ds) => ds === '2027-04-10' ? { et0: 2, rain: 0, prob: 0, tmin: 0.5, tmax: 5 } : { et0: 2.6, rain: 0, prob: 0, tmin: 4, tmax: 12 };
+  const w = learnedWorld(T(2027, 4, 9, 6, 0), wx);
+  w.storage.s = JSON.stringify(Object.assign(JSON.parse(w.storage.s), { dp: dayNo(T(2027, 4, 8, 12)), d: 14, ev: dayNo(T(2027, 4, 9, 12)) }));
+  w.httpFail = true; w.powerFail(1000);
+  w.run(T(2027, 4, 10, 13, 0));
+  const r = w.runs().filter(x => berlinParts(x.on).date === '2027-04-10');
+  check('S49 ungelernt, Frostnacht ohne Internet: kein Lauf in der Kälte', r.length === 0 && /Frostsperre \(geschätzt/.test(w.vcText()),
+    runsInfo(w) + ' / ' + w.vcText());
+  common(w, 'S49');
+};
+
+// ------------------------------------------------------------------
+scenarios.S50_nachpruefung_gruende = function () {
+  // a) ohne Internet Frostsperre, um 11:30 kurz Stromausfall: nach dem Neustart scheitert der Abruf, der Gerätefühler entscheidet
+  const wx = (ds) => ds === '2027-04-10' ? { et0: 2, rain: 0, prob: 0, tmin: 1, tmax: 9 } : { et0: 2.6, rain: 0, prob: 0, tmin: 4, tmax: 14 };
+  const w = learnedWorld(T(2027, 4, 9, 6, 0), wx);
+  w.storage.s = JSON.stringify(Object.assign(JSON.parse(w.storage.s), { dp: dayNo(T(2027, 4, 8, 12)), d: 14, ev: dayNo(T(2027, 4, 9, 12)), ob: 14, oa: 14 }));
+  w.httpFail = true; w.powerFail(1000);
+  w.run(T(2027, 4, 9, 20, 0));
+  w.ambient = (t) => (t < T(2027, 4, 10, 11, 45) ? 2 : 8);
+  w.run(T(2027, 4, 10, 11, 30)); w.powerFail(60e3); w.run(T(2027, 4, 10, 13, 0)); w.ambient = null;
+  const r = w.runs().filter(x => berlinParts(x.on).date === '2027-04-10'), p = berlinParts(r[0] ? r[0].on : 0);
+  check('S50 Frost, Neustart, Abruf scheitert: Gerätefühler entscheidet, um 12:05 gegossen', r.length === 1 && p.hh === 12 && p.mm >= 5 && p.mm <= 6,
+    runsInfo(w) + ' / ' + logsSince(w, T(2027, 4, 10, 9, 0)).split('\n').filter(x => /Tagesprüfung/.test(x)).join(' | '));
+  // b) Frost um 10:00, um 11:05 erstmals Regen angekündigt, um 12:05 abgesagt: Texte nach dem Grund der letzten Prüfung
+  const w2 = learnedWorld(T(2027, 4, 10, 6, 30), () => ({ et0: 3, rain: 0, prob: 0, tmin: 1, tmax: 14 }));
+  w2.storage.s = JSON.stringify(Object.assign(JSON.parse(w2.storage.s), { dp: dayNo(T(2027, 4, 9, 12)), d: 14 }));
+  w2.currentTemp = (t) => (berlinParts(t).hh < 11 ? 3 : 7);
+  w2.forecast = () => (berlinParts(w2.t).hh === 11 ? { rain: 12, prob: 90 } : { rain: 0, prob: 5 });
+  w2.powerFail(1000); w2.run(T(2027, 4, 10, 13, 0));
+  const e2 = w2.logs.filter(l => /Tagesprüfung/.test(l.msg)).map(l => l.msg.replace(/^.*-> /, ''));
+  check('S50b Frost, dann Regen, dann Absage: Texte passen', e2.length === 3 && /^Frostsperre/.test(e2[0]) &&
+    /^Regen erwartet \(12 mm, 90 %\)$/.test(e2[1]) && /^Regen abgesagt, gegossen/.test(e2[2]), e2.join(' | '));
+  // c) Regen um 10:00, um 11:05 Prognose mit Frostnacht, Luft aber warm, Regen weg: „Regen abgesagt“, nicht „Frost vorbei“
+  const w3 = learnedWorld(T(2027, 4, 10, 6, 30), () => ({ et0: 3, rain: 0, prob: 0, tmin: 4, tmax: 14 }));
+  w3.storage.s = JSON.stringify(Object.assign(JSON.parse(w3.storage.s), { dp: dayNo(T(2027, 4, 9, 12)), d: 14 }));
+  w3.currentTemp = () => 8;
+  w3.forecast = () => (berlinParts(w3.t).hh < 11 ? { rain: 12, prob: 90, tmin: 4 } : { rain: 0, prob: 5, tmin: 2.5 });
+  w3.powerFail(1000); w3.run(T(2027, 4, 10, 13, 0));
+  const e3 = w3.logs.filter(l => /Tagesprüfung/.test(l.msg)).map(l => l.msg.replace(/^.*-> /, ''));
+  check('S50c Regen, dann abgesagt: „Regen abgesagt“', e3.length === 2 && /^Regen erwartet/.test(e3[0]) && /^Regen abgesagt, gegossen/.test(e3[1]), e3.join(' | '));
+  common(w, 'S50'); common(w2, 'S50b'); common(w3, 'S50c');
+};
+
+// ------------------------------------------------------------------
+scenarios.S51_led_nach_fehler = function () {
+  // ein einzelner Fehler beim Setzen der LED darf die LED-Steuerung nicht dauerhaft abschalten
+  const w = learnedWorld(T(2027, 6, 1, 6, 30));
+  w.storage.s = JSON.stringify(Object.assign(JSON.parse(w.storage.s), { dp: dayNo(T(2027, 5, 31, 12)), d: 14 }));
+  w.pump.mode = 'closed';
+  w.powerFail(1000); w.runFor(10e3);
+  const sh = w.dev.ctx.Shelly, orig = sh.call; let failed = 0;
+  sh.call = function (method, params, cb, ud) {   // der erste Versuch zurück auf Grün scheitert (Fehler -103)
+    if (method === 'PLUGS_UI.SetConfig' && params.config.leds.colors['switch:0'].off.rgb[1] === 100 && w.t > T(2027, 6, 1, 23, 0) && !failed) {
+      failed++; return orig.call(this, 'Switch.SetConfig', { id: 0, config: { busy: 1 } }, cb, ud);
+    }
+    return orig.call(this, method, params, cb, ud);
+  };
+  w.run(T(2027, 6, 1, 12, 0)); w.pump.mode = 'normal';
+  const off = () => JSON.stringify(w.plugsUi.leds.colors['switch:0'].off.rgb);
+  check('S51 nach Störung violett', off() === '[100,0,100]', off());
+  w.run(T(2027, 6, 2, 6, 0));
+  check('S51 Fehler beim Zurückstellen: binnen 2 h doch grün', failed === 1 && off() === '[0,100,0]', failed + ' ' + off());
+  common(w, 'S51');
 };
 
 // ------------------------------------------------------------------

@@ -45,6 +45,9 @@ class World {
   constructor(opts) {
     this.code = opts.code;
     this.t = opts.start;                // echte Zeit in ms (UTC)
+    let seed = (opts.seed === undefined ? 20261018 : opts.seed) >>> 0;   // Rauschen reproduzierbar (mulberry32)
+    this.rand = () => { seed = (seed + 0x6D2B79F5) >>> 0; let z = seed; z = Math.imul(z ^ (z >>> 15), z | 1);
+      z ^= z + Math.imul(z ^ (z >>> 7), z | 61); return ((z ^ (z >>> 14)) >>> 0) / 4294967296; };
     this.q = [];                        // Ereignisse {at, seq, fn, dev}
     this.seq = 0;
     this.internet = true;
@@ -194,12 +197,12 @@ class World {
     const conducting = dev.output || p.weld;
     if (!conducting) return { P: 0, I: 0, U: 231 };
     const el = (this.t - p.onSince) / 1000;
-    const nz = () => (Math.random() * 2 - 1) * p.noise;
+    const nz = () => (this.rand() * 2 - 1) * p.noise;
     let P, I, U = 229;
     switch (p.mode) {
       case 'normal': P = p.Pn + nz(); break;
       case 'dry': P = p.Pn * 0.42 + nz(); break;
-      case 'airmix': P = (Math.random() < 0.55 ? p.Pn * 0.45 : p.Pn * 0.9) + nz(); break;
+      case 'airmix': P = (this.rand() < 0.55 ? p.Pn * 0.45 : p.Pn * 0.9) + nz(); break;
       case 'closed': P = p.Pn * 0.62 + nz(); break;
       case 'blocked': P = 3300; I = 26; break;
       case 'noload': P = 0; I = 0; break;
@@ -353,6 +356,11 @@ class World {
               const job = Object.assign({ id: w.jobs.length + 1 }, JSON.parse(JSON.stringify(params)));
               w.jobs.push(job); w.cfgWrites++; res = { id: job.id, rev: w.jobs.length }; break;
             }
+            case 'Schedule.Update': {
+              const job = w.jobs.find((x) => x.id === params.id);
+              if (!job) { err = -105; msg = 'no such job'; break; }
+              Object.assign(job, JSON.parse(JSON.stringify(params))); w.cfgWrites++; res = { rev: w.jobs.length }; break;
+            }
             case 'HTTP.GET': {
               lat = 400;
               w.http.push({ t: w.t, url: params.url });
@@ -385,6 +393,7 @@ class World {
   }
   fireSchedules() {                     // Gerätezeitplan ausführen (nur Script.Start wird nachgebildet)
     for (const j of this.jobs) {
+      if (j.enable === false) continue;
       for (const c of j.calls || []) {
         if (String(c.method).toLowerCase() === 'script.start' && this.dev && !this.dev.scriptRunning) {
           this.logEvt('ZEITPLAN startet Skript'); this.restartScript(); this.dev.scriptRunning = true;
@@ -436,7 +445,7 @@ class World {
   }
   devTemp() {
     this.rhUpdate();
-    return Math.round((this.ambientAt(this.t) + this.selfHeat + this.rh + (Math.random() * 0.4 - 0.2)) * 10) / 10;
+    return Math.round((this.ambientAt(this.t) + this.selfHeat + this.rh + (this.rand() * 0.4 - 0.2)) * 10) / 10;
   }
 
   eval(code) { return require('vm').runInContext(code, this.dev.ctx); }   // wie Script.Eval
@@ -466,9 +475,15 @@ class World {
       daily.temperature_2m_min.push(x.tmin);
       daily.temperature_2m_max.push(this.wxDay(ds).tmax);
     }
-    return JSON.stringify({ latitude: +q.latitude, longitude: +q.longitude, timezone: 'Europe/Berlin',
+    const o = { latitude: +q.latitude, longitude: +q.longitude, timezone: 'Europe/Berlin',
       daily_units: { time: 'iso8601', et0_fao_evapotranspiration: 'mm', precipitation_sum: 'mm', precipitation_probability_max: '%', temperature_2m_min: '°C', temperature_2m_max: '°C' },
-      daily });
+      daily };
+    if (/temperature_2m/.test(q.current || '')) {   // aktuelle Lufttemperatur (Open-Meteo: 15-min-Modellwerte)
+      const p = berlinParts(this.t);
+      o.current = { time: p.date + 'T' + String(p.hh).padStart(2, '0') + ':' + String(p.mm - p.mm % 15).padStart(2, '0'), interval: 900,
+        temperature_2m: this.currentTemp ? this.currentTemp(this.t) : Math.round(this.ambientAt(this.t) * 10) / 10 };
+    }
+    return JSON.stringify(o);
   }
 
   // ---------- Auswertung ----------

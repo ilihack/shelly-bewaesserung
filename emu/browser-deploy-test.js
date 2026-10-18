@@ -1,7 +1,7 @@
 'use strict';
 /*
  * Prüft den Browserweg: build/deploy-browser.js wird in einem echten Chromium auf der Seite des
- * nachgebauten Shelly ausgeführt, so wie am Montag auf http://<ip>/.
+ * nachgebauten Shelly ausgeführt, so wie am Montag auf http(s)://<ip>/ (mit Firmware-Update und Wächtertest).
  * Aufruf: NODE_PATH=$(npm root -g) node emu/browser-deploy-test.js
  */
 const fs = require('fs');
@@ -24,7 +24,8 @@ startMock(async (m) => {
     const r = bw.ergebnis || {};
     const ok = !bw.fehler && r.ok && !m.state.matter && m.state.putCount === Math.ceil(code.length / 1024) &&
       (r.bedienfeld || []).length === 7 && /Bereit|Heute/.test(r.status || '') &&
-      m.state.evals === 2 && m.state.updates === 1 && m.world.logs.some((l) => /Selbsttest Wetter: ok/.test(l.msg));
+      m.state.evals === 2 && m.state.updates === 1 && m.state.ver === '2.1.0' && m.state.ap === false && r.waechter === true &&
+      m.world.logs.some((l) => /Selbsttest Wetter: ok/.test(l.msg));
     console.log(ok ? '\nBROWSERWEG: bestanden' : '\nBROWSERWEG: FEHLER ' + JSON.stringify(bw));
     process.exitCode = ok ? 0 : 1;
   } catch (e) { console.log('ABBRUCH ' + e.stack); process.exitCode = 1; }

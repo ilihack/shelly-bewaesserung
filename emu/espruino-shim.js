@@ -49,7 +49,7 @@ function __wx(url) {
     dl.time.push(__ymd(today + i)); dl.et0_fao_evapotranspiration.push(4.0); dl.precipitation_sum.push(0);
     dl.precipitation_probability_max.push(5); dl.temperature_2m_min.push(14); dl.temperature_2m_max.push(24);
   }
-  return JSON.stringify({ timezone: 'Europe/Berlin', daily_units: { temperature_2m_min: '\xC2\xB0C' }, daily: dl });
+  return JSON.stringify({ timezone: 'Europe/Berlin', daily_units: { temperature_2m_min: '\xC2\xB0C' }, daily: dl, current: { interval: 900, temperature_2m: 18 } });
 }
 function __safe(fn, a, b, c, d) { try { fn(a, b, c, d); } catch (e) { __W.errs++; print('## FEHLER ' + e); } }
 var Timer = {
@@ -99,7 +99,8 @@ var Shelly = {
       '{"results":[{"name":"Ludwigshafen am Rhein","latitude":49.48121,"longitude":8.44641}]}' : __wx(p.url) }; }
     else if (method === 'Sys.SetTime') { }
     else if (method === 'Schedule.List') { res = { jobs: JSON.parse(JSON.stringify(__W.jobs)), rev: __W.jobs.length }; }
-    else if (method === 'Schedule.Create') { __W.jobs.push(p); __W.cfgWrites++; res = { id: __W.jobs.length }; }
+    else if (method === 'Schedule.Create') { p.id = __W.jobs.length + 1; __W.jobs.push(p); __W.cfgWrites++; res = { id: p.id }; }
+    else if (method === 'Schedule.Update') { for (var q = 0; q < __W.jobs.length; q++) if (__W.jobs[q].id === p.id) { for (var f in p) __W.jobs[q][f] = p[f]; } __W.cfgWrites++; res = {}; }
     else if (method === 'PLUGS_UI.SetConfig') { __W.led = p.config; __W.cfgWrites++; __W.ledWrites++; res = { restart_required: false }; }
     else { err = -114; msg = 'unbekannt ' + method; }
     __at(__W.up + lat, function () { __W.rpcOpen--; if (cb) __safe(cb, res, err, msg, ud); });

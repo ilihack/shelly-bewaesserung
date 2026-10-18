@@ -2,25 +2,62 @@
 /*
  * Spielt das Bewässerungsskript auf den Shelly Outdoor Plug S Gen3 und prüft das Ergebnis.
  * Ein Ablauf, zwei Wege:
- *   Node (ab 18):   node tools/deploy.js <ip-des-shelly> [build/bewaesserung.min.js]
- *   Browser:        auf der Weboberfläche des Shelly (http://<ip>/) in der Konsole
- *                   deployShelly("", CODE).then(console.log)   (gleiche Herkunft, kein CORS)
- * Schritte: Gerät prüfen -> Firmware >= 2.0.1 (sonst Update, mindestens 1.5) -> Matter aus -> Skript anlegen/ersetzen
- *           -> Autostart an -> starten, Bedienfeld anlegen lassen, Skript neu starten -> Ergebnis prüfen:
- *           Skript läuft fehlerfrei, Einschaltzustand aus, Notabschaltung 9600 s, Bedienfeld vollständig,
- *           Statuszeile da, Wetterdienst vom Gerät erreichbar, Selbsttest im Skript ok, Speicherreserve >= 2 KB.
+ *   Node (ab 18):   node tools/deploy.js <ip-des-shelly> [build/bewaesserung.min.js] [--passwort <pw>] [--ohne-waechtertest]
+ *   Browser:        auf der Weboberfläche des Shelly (http(s)://<ip>/) in der Konsole den Inhalt von
+ *                   build/deploy-browser.js einfügen (gleiche Herkunft, kein CORS; ohne Gerätepasswort)
+ * Schritte: Gerät prüfen -> neueste stabile Firmware -> Matter aus -> Wächter anhalten -> Skript anlegen/ersetzen
+ *           -> Autostart an -> starten, Bedienfeld anlegen lassen, Skript neu starten -> Selbsttest -> prüfen:
+ *           Skript läuft fehlerfrei, Einschaltzustand aus, Notabschaltung 9600 s, kein Wiedereinschalten,
+ *           Bedienfeld vollständig, Statuszeile da, Wetterdienst erreichbar, Speicherreserve >= 2 KB,
+ *           Sicherheit (Passwort, Access Point, Bluetooth), Wächter startet ein angehaltenes Skript neu.
+ * Hat der Shelly ein Passwort (Benutzer admin), meldet er sich per Digest mit SHA-256 an (Shelly-Doku,
+ * General/Authentication); im Browserweg ist das nicht vorgesehen.
  */
-async function deployShelly(base, code, log) {
+async function deployShelly(base, code, log, opt) {
   log = log || function (t) { (typeof console !== 'undefined') && console.log(t); };
-  const NAME = 'bewaesserung';
+  opt = opt || {};
+  const NAME = 'bewaesserung', WD = '0 */5 * * * *';
   const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+  let auth = null;                                   // Anmeldung: { realm, nonce, nc, legacy, ha1 }
+  async function sha256(t) {
+    if (!(typeof crypto !== 'undefined' && crypto.subtle)) throw new Error('Passwort nur über https oder Node');
+    const b = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(t));
+    return Array.from(new Uint8Array(b)).map((x) => ('0' + x.toString(16)).slice(-2)).join('');
+  }
+  async function challenge(h) {                      // 401: Anmeldedaten aus WWW-Authenticate übernehmen
+    const realm = /realm="([^"]*)"/.exec(h), nonce = /nonce="?([^",]*)"?/.exec(h);
+    if (!opt.pass) throw new Error('Der Shelly hat ein Passwort: node tools/deploy.js <ip> --passwort <passwort>');
+    if (!realm || !nonce) throw new Error('Anmeldung: unbekannte Antwort des Geräts');
+    auth = { realm: realm[1], nonce: nonce[1], nc: 0, legacy: /^\d+$/.test(nonce[1]),
+      ha1: await sha256('admin:' + realm[1] + ':' + opt.pass) };
+  }
+  async function authFrame() {                       // vor Firmware 2.0: Zahl als nonce, ha2 aus "dummy_method:dummy_uri"
+    const nc = ('0000000' + (++auth.nc).toString(16)).slice(-8), cnonce = Math.floor(Math.random() * 1e9);
+    const ha2 = await sha256(auth.legacy ? 'dummy_method:dummy_uri' : 'POST:/rpc');
+    return { realm: auth.realm, username: 'admin', nonce: auth.legacy ? Number(auth.nonce) : auth.nonce, cnonce: cnonce,
+      nc: nc, response: await sha256(auth.ha1 + ':' + auth.nonce + ':' + nc + ':' + cnonce + ':auth:' + ha2), algorithm: 'SHA-256' };
+  }
   async function rpc(method, params) {
-    const r = await fetch(base + '/rpc', { method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ id: 1, method: method, params: params || {} }) });
-    if (r.status === 401) throw new Error('Gerät hat ein Passwort – erst im Browser anmelden');
-    const j = await r.json();
-    if (j.error) throw new Error(method + ': ' + j.error.message);
-    return j.result;
+    for (let k = 0; k < 4; k++) {
+      const f = { id: 1, method: method, params: params || {} };
+      if (auth) f.auth = await authFrame();
+      const r = await fetch(base + '/rpc', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(f) });
+      if (r.status === 401) { await challenge(r.headers.get('www-authenticate') || ''); continue; }   // auch: nonce abgelaufen
+      if (r.status === 429) { await sleep(15000); continue; }                                       // Bremse nach Fehlversuchen
+      const j = await r.json();
+      if (j.error) throw new Error(method + ': ' + j.error.message);
+      return j.result;
+    }
+    throw new Error(method + ': Anmeldung abgelehnt (Passwort falsch?)');
+  }
+  async function waitVersion(old, maxS) {            // nach dem Update: bis die neue Firmware antwortet
+    let last = null;
+    for (let i = 0; i < maxS / 5; i++) {
+      await sleep(5000);
+      try { last = await rpc('Shelly.GetDeviceInfo'); if (last.ver !== old) return last; } catch (e) { /* lädt oder bootet */ }
+    }
+    if (last) return last;
+    throw new Error('Gerät kommt nicht wieder');
   }
   async function waitOnline(maxS) {
     for (let i = 0; i < maxS / 5; i++) {
@@ -29,28 +66,34 @@ async function deployShelly(base, code, log) {
     }
     throw new Error('Gerät kommt nicht wieder');
   }
+  const isWd = (j, id) => (j.calls || []).some((c) => String(c.method).toLowerCase() === 'script.start' && c.params && c.params.id === id);
   const verNum = (v) => (v || '0.0.0').split('-')[0].split('.').map(Number).reduce((a, x) => a * 1000 + x, 0);
-  const out = { schritte: [] };
+  const out = { schritte: [], firmwareNeu: false };
   const step = (t) => { out.schritte.push(t); log(t); };
 
-  // 1. Gerät
+  // 1. Gerät (Shelly.GetDeviceInfo braucht kein Passwort)
   if (/[^\x00-\x7F]/.test(code)) throw new Error('Code enthält Nicht-ASCII – bitte die Gerätefassung (build) nehmen');
   let info = await rpc('Shelly.GetDeviceInfo');
-  step('Gerät: ' + info.model + ' (' + info.app + '), Firmware ' + info.ver + ', Gen ' + info.gen);
+  step('Gerät: ' + info.model + ' (' + info.app + '), Firmware ' + info.ver + ', Gen ' + info.gen + (info.auth_en ? ', Passwort an' : ''));
   if (info.model !== 'S3PL-20112EU') step('WARNUNG: kein Outdoor Plug S Gen3 – Modell ' + info.model);
+  if (info.auth_en && !opt.pass) throw new Error('Der Shelly hat ein Passwort: node tools/deploy.js <ip> --passwort <passwort>');
 
-  // 2. Firmware: Script.storage braucht 1.5.0; 2.0.1 behebt u. a. Messfehler des Strommesschips (1.7.4) und einen
-  //    Pufferüberlauf bei gestückelten HTTP-Antworten (2.0.1), wie sie Open-Meteo schickt
-  if (verNum(info.ver) < verNum('2.0.1')) {
-    step('Firmware ' + info.ver + ' älter als 2.0.1 – Update auf stabil wird angestoßen');
+  // 2. Firmware: immer die neueste stabile. Mindestens 1.5.0 (Skriptspeicher); 2.0.1 behebt u. a. Messfehler des
+  //    Strommesschips (1.7.4) und einen Pufferüberlauf bei gestückelten HTTP-Antworten, wie sie Open-Meteo schickt
+  let up = null;
+  try { up = await rpc('Shelly.CheckForUpdate'); } catch (e) { step('Update-Prüfung nicht möglich: ' + e.message); }
+  if (up && up.stable && up.stable.version) {
+    step('Firmware ' + info.ver + ' -> ' + up.stable.version + ' (neueste stabile) wird installiert');
     try {
       await rpc('Shelly.Update', { stage: 'stable' });
-      info = await waitOnline(300);
+      info = await waitVersion(info.ver, 600);
       step('Firmware jetzt ' + info.ver);
     } catch (e) { step('Update nicht möglich: ' + e.message); }
-    if (verNum(info.ver) < verNum('1.5.0')) throw new Error('Firmware weiterhin < 1.5.0');
-    if (verNum(info.ver) < verNum('2.0.1')) step('WARNUNG: Firmware unter 2.0.1 – läuft, aber bitte später aktualisieren');
-  }
+    out.firmwareNeu = info.ver === up.stable.version;
+    if (!out.firmwareNeu) step('WARNUNG: nicht die neueste Firmware – Aufspielen später wiederholen');
+  } else if (up) { out.firmwareNeu = true; step('Firmware ' + info.ver + ' ist die neueste stabile'); }
+  if (verNum(info.ver) < verNum('1.5.0')) throw new Error('Firmware weiterhin < 1.5.0');
+  if (verNum(info.ver) < verNum('2.0.1')) step('WARNUNG: Firmware unter 2.0.1 – läuft, aber bitte aktualisieren');
 
   // 3. Matter aus (Skripte laufen nur ohne Matter)
   try {
@@ -62,22 +105,42 @@ async function deployShelly(base, code, log) {
     } else step('Matter ist aus');
   } catch (e) { step('Matter: ' + e.message); }
 
-  // 4. Skript anlegen oder ersetzen
+  // 4. Skript anlegen oder ersetzen; den Wächter vorher anhalten, sonst startet er ein halb geladenes Skript.
+  //    Bricht das Hochladen ab, einmal von vorn; klappt auch das nicht, den Wächter wieder an und klar melden.
   const list = (await rpc('Script.List')).scripts || [];
   let s = list.find((x) => x.name === NAME);
-  if (s && s.running) { await rpc('Script.Stop', { id: s.id }); step('altes Skript gestoppt'); }
-  if (!s) { s = { id: (await rpc('Script.Create', { name: NAME })).id }; step('Skriptplatz angelegt: ' + s.id); }
-  let len = 0;
-  for (let i = 0; i < code.length; i += 1024) {
-    len = (await rpc('Script.PutCode', { id: s.id, code: code.slice(i, i + 1024), append: i > 0 })).len;
+  const angehalten = [];
+  if (s) {
+    for (const j of ((await rpc('Schedule.List')).jobs || [])) {
+      if (isWd(j, s.id) && j.enable) { await rpc('Schedule.Update', { id: j.id, enable: false }); angehalten.push(j.id); step('Wächter angehalten'); }
+    }
   }
-  if (len !== code.length) throw new Error('Hochladen unvollständig: ' + len + ' von ' + code.length);
-  step('Code hochgeladen: ' + len + ' Byte');
-  await rpc('Script.SetConfig', { id: s.id, config: { enable: true } });
-  step('Autostart an');
-
-  // 5. Starten, Bedienfeld anlegen lassen, einmal neu starten (Handles nach dem Anlegen)
-  await rpc('Script.Start', { id: s.id });
+  try {
+    if (s && s.running) { await rpc('Script.Stop', { id: s.id }); step('altes Skript gestoppt'); }
+    if (!s) { s = { id: (await rpc('Script.Create', { name: NAME })).id }; step('Skriptplatz angelegt: ' + s.id); }
+    for (let versuch = 1; ; versuch++) {
+      try {
+        let len = 0;
+        for (let i = 0; i < code.length; i += 1024) {
+          len = (await rpc('Script.PutCode', { id: s.id, code: code.slice(i, i + 1024), append: i > 0 })).len;
+        }
+        if (len !== code.length) throw new Error('unvollständig: ' + len + ' von ' + code.length + ' Byte');
+        break;
+      } catch (e) {
+        if (versuch >= 2) throw e;
+        step('Hochladen abgebrochen (' + e.message + '), zweiter Versuch von vorn');
+      }
+    }
+    step('Code hochgeladen: ' + code.length + ' Byte in ' + Math.ceil(code.length / 1024) + ' Stücken');
+    await rpc('Script.SetConfig', { id: s.id, config: { enable: true } });
+    step('Autostart an');
+    // 5. Starten, Bedienfeld anlegen lassen, einmal neu starten (Handles nach dem Anlegen); das Skript stellt
+    //    dabei Relais und Wächter selbst ein
+    await rpc('Script.Start', { id: s.id });
+  } catch (e) {
+    for (const id of angehalten) { try { await rpc('Schedule.Update', { id: id, enable: true }); } catch (e2) { /* Gerät weg */ } }
+    throw new Error('Gerät ohne laufendes neues Skript – Aufspielen wiederholen (' + e.message + ')');
+  }
   await sleep(15000);
   await rpc('Script.Stop', { id: s.id });
   await rpc('Script.Start', { id: s.id });
@@ -122,21 +185,71 @@ async function deployShelly(base, code, log) {
   } catch (e) { out.wetter = 'FEHLER ' + e.message; }
   step('Wetterdienst vom Gerät: ' + out.wetter);
   if (reserve < 2048) step('WARNUNG: Speicher knapp (Reserve ' + reserve + ' Byte) – bitte melden');
+
+  // 7. Sicherheit: ein offener Access Point wird abgeschaltet, aber nur, wenn der Shelly im Heim-WLAN eine Adresse
+  //    hat (sonst wäre er nicht mehr erreichbar); der Rest wird gemeldet (das Passwort setzt du in der App)
+  try {
+    const wifi = await rpc('WiFi.GetConfig'), ap = wifi.ap || {};
+    let staIp = null;
+    try { staIp = (await rpc('WiFi.GetStatus')).sta_ip || null; } catch (e) { /* ohne Angabe: nichts abschalten */ }
+    if (ap.enable && ap.is_open !== false && staIp) {
+      await rpc('WiFi.SetConfig', { config: { ap: { enable: false } } }); ap.enable = false; step('offenen Access Point abgeschaltet');
+    } else if (ap.enable && ap.is_open !== false) step('WARNUNG: offener Access Point bleibt an, der Shelly hat noch keine Adresse im Heim-WLAN');
+    let ble = {};
+    try { ble = await rpc('BLE.GetConfig'); } catch (e) { /* ohne Bluetooth */ }
+    out.sicherheit = { passwort: !!info.auth_en, accessPoint: !!ap.enable, bluetoothSteuerung: !!(ble.rpc && ble.rpc.enable) };
+    step('Sicherheit: Gerätepasswort ' + (info.auth_en ? 'an' : 'AUS – Empfehlung: in der App setzen') + ', Access Point ' +
+      (ap.enable ? 'an (mit Passwort)' : 'aus') + ', Steuerung über Bluetooth ' + (out.sicherheit.bluetoothSteuerung ? 'an (ab Firmware 2.0 nur gekoppelt)' : 'aus'));
+  } catch (e) { step('Sicherheit nicht lesbar: ' + e.message); }
+
+  // 8. Wächter: Zeitplan aktiv? Danach das Skript anhalten; der Zeitplan muss es binnen 5 min neu starten
+  const wd = ((await rpc('Schedule.List')).jobs || []).filter((j) => isWd(j, s.id));
+  out.waechterPlan = wd.length === 1 && wd[0].enable === true && wd[0].timespec === WD;
+  step('Wächter-Zeitplan: ' + (out.waechterPlan ? 'alle 5 min, aktiv' : 'FEHLT oder falsch: ' + JSON.stringify(wd)));
+  out.waechter = !!opt.ohneWaechter;
+  if (!opt.ohneWaechter && out.waechterPlan && out.uhr) {
+    await rpc('Script.Stop', { id: s.id });
+    step('Wächtertest: Skript angehalten, warte bis zu 5,5 min');
+    const t0 = Date.now();
+    for (let i = 0; i < 66 && !out.waechter; i++) { await sleep(5000); out.waechter = (await rpc('Script.GetStatus', { id: s.id })).running; }
+    step(out.waechter ? 'Wächter: Skript nach ' + Math.round((Date.now() - t0) / 1000) + ' s wieder gestartet' : 'FEHLER: Wächter startet das Skript nicht');
+    if (!out.waechter) await rpc('Script.Start', { id: s.id });
+  } else if (!opt.ohneWaechter) step('Wächtertest übersprungen (Zeitplan oder Uhr fehlt)');
+
   out.ok = st.running && !st.errors && cfg.initial_state === 'off' && cfg.auto_off === true &&
     cfg.auto_off_delay === 9600 && cfg.auto_on !== true && fehlt.length === 0 && !!out.status && /^ok/.test(out.wetter) && reserve >= 2048 &&
-    /^ok/.test(selbst);
+    /^ok/.test(selbst) && out.waechterPlan && out.waechter && out.firmwareNeu;
   step(out.ok ? 'FERTIG – alles in Ordnung' : 'PRÜFEN – siehe oben');
   return out;
+}
+
+// Node: ab Firmware 2.0 (ab Werk) leitet der Shelly http auf https um, mit einem Zertifikat aus Shellys eigener CA.
+// Das wird im Heimnetz hingenommen (nur für diesen Aufruf).
+async function shellyBasis(ip) {
+  try {
+    const r = await fetch('http://' + ip + '/shelly', { redirect: 'manual' });
+    const loc = r.headers.get('location') || '';
+    if (r.status >= 300 && r.status < 400 && /^https:/.test(loc)) {
+      process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
+      return new URL(loc).origin;
+    }
+  } catch (e) { /* nicht erreichbar: der erste Aufruf meldet es */ }
+  return 'http://' + ip;
 }
 
 if (typeof module !== 'undefined' && require.main === module) {
   const fs = require('fs');
   const path = require('path');
-  const ip = process.argv[2];
-  if (!ip) { console.log('Aufruf: node tools/deploy.js <ip> [gerätefassung.js]'); process.exit(2); }
-  const file = process.argv[3] || path.join(__dirname, '..', 'build', 'bewaesserung.min.js');
-  deployShelly('http://' + ip, fs.readFileSync(file, 'utf8'))
+  const args = process.argv.slice(2), opt = {};
+  const pw = args.indexOf('--passwort');
+  if (pw >= 0) { opt.pass = args[pw + 1]; args.splice(pw, 2); }
+  const ow = args.indexOf('--ohne-waechtertest');
+  if (ow >= 0) { opt.ohneWaechter = true; args.splice(ow, 1); }
+  if (!args[0]) { console.log('Aufruf: node tools/deploy.js <ip> [gerätefassung.js] [--passwort <pw>] [--ohne-waechtertest]'); process.exit(2); }
+  const file = args[1] || path.join(__dirname, '..', 'build', 'bewaesserung.min.js');
+  shellyBasis(args[0])
+    .then((base) => deployShelly(base, fs.readFileSync(file, 'utf8'), null, opt))
     .then((r) => process.exit(r.ok ? 0 : 1))
     .catch((e) => { console.error('ABBRUCH: ' + e.message); process.exit(1); });
 }
-if (typeof module !== 'undefined') module.exports = { deployShelly };
+if (typeof module !== 'undefined') module.exports = { deployShelly, shellyBasis };

@@ -1,22 +1,81 @@
 'use strict';
 /*
- * Prüft tools/deploy.js (Node-Weg) gegen den nachgebauten Shelly (emu/mock-device.js).
+ * Prüft tools/deploy.js (Node-Weg) gegen den nachgebauten Shelly (emu/mock-device.js):
+ *   a) Gerät mit Firmware 1.7.1, offener Access Point, ohne Passwort, http
+ *   b) Gerät wie ab Werk mit Firmware 2.x: http leitet auf https um, Gerätepasswort (Digest SHA-256)
+ *   c) falsches Passwort: sauberer Abbruch
+ *      dazu: Hochladen bricht einmal ab (zweiter Versuch), zweimal ab (Meldung, Wächter wieder an)
+ *   d) Firmware-Update scheitert, nur Access Point: Skript läuft, Ergebnis nicht „FERTIG“, Access Point bleibt an
  * Aufruf: node emu/deploy-test.js
  */
 const fs = require('fs');
 const path = require('path');
 const { startMock } = require('./mock-device');
-const { deployShelly } = require('../tools/deploy');
+const { deployShelly, shellyBasis } = require('../tools/deploy');
 
-startMock(async (m) => {
-  const code = fs.readFileSync(path.join(__dirname, '..', 'build', 'bewaesserung.min.js'), 'utf8');
+const code = fs.readFileSync(path.join(__dirname, '..', 'build', 'bewaesserung.min.js'), 'utf8');
+const mock = (opt) => new Promise((res) => startMock(res, opt));
+
+(async () => {
+  let ok = true;
+  const pruefe = (name, cond, detail) => { console.log((cond ? '  ok   ' : '  FEHLER ') + name + (cond ? '' : ' -- ' + detail)); ok = ok && cond; };
+
+  // a) http, ohne Passwort
+  let m = await mock({});
   try {
-    const r = await deployShelly('http://127.0.0.1:' + m.port, code, (t) => console.log('  ' + t));
-    const ok = r.ok && !m.state.matter && m.state.putCount === Math.ceil(code.length / 1024) &&
-      r.bedienfeld.length === 7 && /Bereit|Heute/.test(r.status || '') &&
-      m.state.evals === 2 && m.state.updates === 1 && m.world.logs.some((l) => /Selbsttest Wetter: ok/.test(l.msg));
-    console.log(ok ? '\nAUFSPIELEN: bestanden' : '\nAUFSPIELEN: FEHLER ' + JSON.stringify(r));
-    process.exitCode = ok ? 0 : 1;
-  } catch (e) { console.log('ABBRUCH ' + e.stack); process.exitCode = 1; }
+    const r = await deployShelly('http://127.0.0.1:' + m.port, code, (t) => console.log('    ' + t));
+    pruefe('a) Aufspielen ok', r.ok, JSON.stringify(r.schritte));
+    pruefe('a) Matter aus, Code vollständig, Bedienfeld 7', !m.state.matter && m.state.putCount === Math.ceil(code.length / 1024) &&
+      r.bedienfeld.length === 7 && /Bereit|Heute/.test(r.status || ''), JSON.stringify(m.state));
+    pruefe('a) Firmware auf die neueste gebracht', m.state.updates === 1 && m.state.ver === '2.1.0', m.state.ver);
+    pruefe('a) Selbsttest im Skript ok', m.state.evals === 2 && m.world.logs.some((l) => /Selbsttest Wetter: ok/.test(l.msg)), '');
+    pruefe('a) offener Access Point abgeschaltet', m.state.ap === false, String(m.state.ap));
+    pruefe('a) Wächter startet ein angehaltenes Skript', r.waechterPlan && r.waechter && m.state.cron >= 1, JSON.stringify({ plan: r.waechterPlan, w: r.waechter, cron: m.state.cron }));
+    // erneutes Aufspielen: Wächter wird angehalten, Firmware ist aktuell
+    const r2 = await deployShelly('http://127.0.0.1:' + m.port, code, () => {}, { ohneWaechter: true });
+    pruefe('a) zweites Aufspielen ok, kein weiteres Update', r2.ok && m.state.updates === 1 &&
+      r2.schritte.some((t) => /Wächter angehalten/.test(t)), JSON.stringify(r2.schritte));
+    // Hochladen bricht einmal ab: zweiter Versuch von vorn
+    m.state.putFehler = 1;
+    const r3 = await deployShelly('http://127.0.0.1:' + m.port, code, () => {}, { ohneWaechter: true });
+    pruefe('a) Abbruch beim Hochladen: zweiter Versuch, danach ok', r3.ok && r3.schritte.some((t) => /zweiter Versuch/.test(t)) &&
+      m.world.code === code, JSON.stringify(r3.schritte));
+    // bricht zweimal ab: klare Meldung, Wächter wieder an
+    m.state.putFehler = 2;
+    let fehler = '';
+    try { await deployShelly('http://127.0.0.1:' + m.port, code, () => {}, { ohneWaechter: true }); } catch (e) { fehler = e.message; }
+    pruefe('a) Abbruch zweimal: Meldung, Wächter wieder an', /ohne laufendes neues Skript/.test(fehler) &&
+      m.world.jobs.length === 1 && m.world.jobs[0].enable === true, fehler + ' ' + JSON.stringify(m.world.jobs));
+  } catch (e) { pruefe('a) ohne Abbruch', false, e.stack); }
   m.close();
-});
+
+  // b) https mit Passwort
+  m = await mock({ https: true, pass: 'geheim' });
+  try {
+    const base = await shellyBasis('127.0.0.1:' + m.port);
+    pruefe('b) Umleitung auf https erkannt', base === 'https://127.0.0.1:' + m.tlsPort, base);
+    const r = await deployShelly(base, code, (t) => console.log('    ' + t), { pass: 'geheim' });
+    pruefe('b) Aufspielen mit Passwort über https ok', r.ok && m.state.authFehler === 0, JSON.stringify({ s: r.schritte, f: m.state.authFehler }));
+    let fehler = '';
+    try { await deployShelly(base, code, () => {}, { pass: 'falsch' }); } catch (e) { fehler = e.message; }
+    pruefe('c) falsches Passwort: Abbruch mit Meldung', /Anmeldung abgelehnt/.test(fehler), fehler);
+    fehler = '';
+    try { await deployShelly(base, code, () => {}); } catch (e) { fehler = e.message; }
+    pruefe('c) Passwort fehlt: Abbruch mit Hinweis', /--passwort/.test(fehler), fehler);
+  } catch (e) { pruefe('b) ohne Abbruch', false, e.stack); }
+  m.close();
+
+  // d) Update scheitert, Shelly nur über seinen Access Point erreichbar: Skript läuft, aber kein „FERTIG“, AP bleibt an
+  m = await mock({ updateFehler: true, ohneWlan: true });
+  try {
+    const r = await deployShelly('http://127.0.0.1:' + m.port, code, () => {}, { ohneWaechter: true });
+    pruefe('d) Update gescheitert: Warnung, nicht fertig, Skript läuft', !r.ok && !r.firmwareNeu && r.skript.laeuft &&
+      r.schritte.some((t) => /WARNUNG: nicht die neueste Firmware/.test(t)), JSON.stringify(r.schritte));
+    pruefe('d) ohne Heim-WLAN bleibt der Access Point an', m.state.ap === true &&
+      r.schritte.some((t) => /Access Point bleibt an/.test(t)), JSON.stringify(r.schritte));
+  } catch (e) { pruefe('d) ohne Abbruch', false, e.stack); }
+  m.close();
+
+  console.log(ok ? '\nAUFSPIELEN: bestanden' : '\nAUFSPIELEN: FEHLER');
+  process.exit(ok ? 0 : 1);
+})();

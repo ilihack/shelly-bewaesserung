@@ -1,18 +1,60 @@
-  Gerät: S3PL-20112EU (OutdoorPlugSG3), Firmware 1.7.1, Gen 3
-  Firmware 1.7.1 älter als 2.0.1 – Update auf stabil wird angestoßen
-  Firmware jetzt 2.0.3
-  Matter abgeschaltet
-  Skriptplatz angelegt: 1
-  Code hochgeladen: 22672 Byte
-  Autostart an
-  Selbsttest im Skript (Ort, Wetter 15 Tage): ok, Ort 49.48 8.45
-  Skript läuft: true, Speicher 12000 (Spitze 14000, frei 60000, Reserve in der Spitze 58000)
-  Relais: Einschaltzustand off, Notabschaltung true nach 9600 s, selbst wieder ein: nein
-  Bedienfeld: text:200, number:200, boolean:200, number:201, number:202, button:200, group:200 – vollständig
-  Status: Heute nicht geprüft, nächste Prüfung morgen 10:00
-  Uhr: 2026-10-19T13:00:55.000Z
-  Wetterdienst vom Gerät: ok 2026-10-19: ET0 4 mm gestern
-  FERTIG – alles in Ordnung
+    Gerät: S3PL-20112EU (OutdoorPlugSG3), Firmware 1.7.1, Gen 3
+    Firmware 1.7.1 -> 2.1.0 (neueste stabile) wird installiert
+    Firmware jetzt 2.1.0
+    Matter abgeschaltet
+    Skriptplatz angelegt: 1
+    Code hochgeladen: 23914 Byte in 24 Stücken
+    Autostart an
+    Selbsttest im Skript (Ort, Wetter 15 Tage): ok, Ort 49.48 8.45
+    Skript läuft: true, Speicher 12000 (Spitze 14000, frei 60000, Reserve in der Spitze 58000)
+    Relais: Einschaltzustand off, Notabschaltung true nach 9600 s, selbst wieder ein: nein
+    Bedienfeld: text:200, number:200, boolean:200, number:201, number:202, button:200, group:200 – vollständig
+    Status: Heute nicht geprüft, nächste Prüfung morgen 10:00
+    Uhr: 2026-10-19T13:00:55.000Z
+    Wetterdienst vom Gerät: ok 2026-10-19: ET0 4 mm gestern
+    offenen Access Point abgeschaltet
+    Sicherheit: Gerätepasswort AUS – Empfehlung: in der App setzen, Access Point aus, Steuerung über Bluetooth aus
+    Wächter-Zeitplan: alle 5 min, aktiv
+    Wächtertest: Skript angehalten, warte bis zu 5,5 min
+    Wächter: Skript nach 5 s wieder gestartet
+    FERTIG – alles in Ordnung
+  ok   a) Aufspielen ok
+  ok   a) Matter aus, Code vollständig, Bedienfeld 7
+  ok   a) Firmware auf die neueste gebracht
+  ok   a) Selbsttest im Skript ok
+  ok   a) offener Access Point abgeschaltet
+  ok   a) Wächter startet ein angehaltenes Skript
+  ok   a) zweites Aufspielen ok, kein weiteres Update
+  ok   a) Abbruch beim Hochladen: zweiter Versuch, danach ok
+  ok   a) Abbruch zweimal: Meldung, Wächter wieder an
+  ok   b) Umleitung auf https erkannt
+(node:3395) Warning: Setting the NODE_TLS_REJECT_UNAUTHORIZED environment variable to '0' makes TLS connections and HTTPS requests insecure by disabling certificate verification.
+(Use `node --trace-warnings ...` to show where the warning was created)
+    Gerät: S3PL-20112EU (OutdoorPlugSG3), Firmware 1.7.1, Gen 3, Passwort an
+    Firmware 1.7.1 -> 2.1.0 (neueste stabile) wird installiert
+    Firmware jetzt 2.1.0
+    Matter abgeschaltet
+    Skriptplatz angelegt: 1
+    Code hochgeladen: 23914 Byte in 24 Stücken
+    Autostart an
+    Selbsttest im Skript (Ort, Wetter 15 Tage): ok, Ort 49.48 8.45
+    Skript läuft: true, Speicher 12000 (Spitze 14000, frei 60000, Reserve in der Spitze 58000)
+    Relais: Einschaltzustand off, Notabschaltung true nach 9600 s, selbst wieder ein: nein
+    Bedienfeld: text:200, number:200, boolean:200, number:201, number:202, button:200, group:200 – vollständig
+    Status: Heute nicht geprüft, nächste Prüfung morgen 10:00
+    Uhr: 2026-10-19T13:00:55.000Z
+    Wetterdienst vom Gerät: ok 2026-10-19: ET0 4 mm gestern
+    offenen Access Point abgeschaltet
+    Sicherheit: Gerätepasswort an, Access Point aus, Steuerung über Bluetooth aus
+    Wächter-Zeitplan: alle 5 min, aktiv
+    Wächtertest: Skript angehalten, warte bis zu 5,5 min
+    Wächter: Skript nach 5 s wieder gestartet
+    FERTIG – alles in Ordnung
+  ok   b) Aufspielen mit Passwort über https ok
+  ok   c) falsches Passwort: Abbruch mit Meldung
+  ok   c) Passwort fehlt: Abbruch mit Hinweis
+  ok   d) Update gescheitert: Warnung, nicht fertig, Skript läuft
+  ok   d) ohne Heim-WLAN bleibt der Access Point an
 
 AUFSPIELEN: bestanden
 exit 0

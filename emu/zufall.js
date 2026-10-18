@@ -33,7 +33,7 @@ function lauf(seed) {
     return { et0: 2 + r() * 5, rain: nass ? r() * (r() < 0.1 ? 40 : 12) : 0, prob: Math.floor(r() * 101),
       tmin: kalt ? -6 + r() * 8 : 2 + r() * 16, tmax: 8 + r() * 28 };
   })());
-  const w = new World({ code: CODE, start, weather });
+  const w = new World({ code: CODE, start, weather, seed: seed * 7919 + 1 });
   w.storage.s = JSON.stringify({ v: 1, t: Math.floor(start / 1000), d: 10, dp: -1, pi: 0, ev: -1, pn: 1320, ln: 3, pu: 0, fd: -1,
     fc: 0, rt: 0, rm: 0, lr: '', la: 49.48, lo: 8.45, pz: 'DELudwigshafen am Rhein' });
   const orig = w.weatherBody.bind(w);

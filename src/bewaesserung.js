@@ -21,14 +21,16 @@
 // ============================== Einstellungen ==============================
 var C = {
   // Ort und Zeit
-  ORT: "Ludwigshafen am Rhein", LAND: "DE", // Koordinaten holt das Skript einmal von Open-Meteo und speichert sie
+  ORT: "Ludwigshafen am Rhein", LAND: "DE", // Koordinaten holt das Skript einmal von Open-Meteo und speichert sie;
+                                 // Schreibweise prüfen, der erste Treffer zählt:
+                                 // https://geocoding-api.open-meteo.com/v1/search?countryCode=DE&language=de&name=Ludwigshafen
   LAT: null, LON: null,          // oder direkt eintragen (z. B. 49.48, 8.45), dann ohne Abfrage
   UTC_H: 1,                      // Normalzeit gegen UTC (Deutschland 1); Sommerzeit nach EU-Regel
 
   // Wann gegossen wird
   START_MIN: 600,                // 10:00 tägliche Prüfung (Minuten nach Mitternacht, Ortszeit)
   END_MIN: 750,                  // 12:30 danach startet keine Automatik mehr (Nachholen, Nachläufe, Nachprüfung);
-                                 // hat angekündigter Regen die Gabe verhindert: stündlich nachsehen (11:05, 12:05)
+                                 // haben Regen oder Frost die Gabe verhindert: stündlich nachsehen (11:05, 12:05)
   SEASON_FROM: 3, SEASON_TO: 11, // Monate mit Automatik, sonst Winterpause
 
   // Wie viel gegossen wird
@@ -41,18 +43,23 @@ var C = {
   HAND_MIN_MM: 6,                // Handgabe mindestens
   RAIN_PROB_MIN: 60,             // Regenprognose zählt ab 60 % Wahrscheinlichkeit
   RAIN_LOSS_MM: 1,               // so viel Regen je Tag erreicht den Boden nicht
-  FROST_C: 3,                    // Tiefstwert der Prognose darunter: keine Automatik
-  FROST_OFF_C: 5,                // ohne Internet: geschätzter Tiefstwert darunter (2 K Reserve)
+  FROST_C: 3,                    // Tiefstwert der Prognose darunter: Frostnacht
+  FROST_OFF_C: 4,                // ohne Internet: geschätzter Tiefstwert darunter (1 K Reserve)
+  FROST_THAW_C: 5,               // nach einer Frostnacht erst gießen, wenn die Luft so warm ist (stündlich geprüft)
   OFF_ET: 1.1,                   // ohne Internet lieber mehr: trockene Tage liegen 5 % zu tief, +5 % Reserve [2]
 
-  // Pumpe: an die eigene Pumpe anpassen
+  // Pumpe: an die eigene Pumpe anpassen. I = Nennstrom laut Typenschild (A); gerechnet wird mit dem Strom, weil die
+  // Watt-Angabe im Katalog oft die Leistung an der Welle ist. Tauchpumpe: P_LEARN_MIN 115·I, P_LEARN_MAX 240·I,
+  // P_ABS_DRY 78·I, P_ABS_OVER 265·I, I_MAX 1,33·I (höchstens 11 A; Pumpen über 9 A passen nicht an diesen Stecker).
+  // Oberflächen-/Jetpumpe: dieselben Formeln, BLANK_S = Ansaugzeit + 20 s. Hauswasserwerk mit Druckschalter: ungeeignet.
+  // Nach dem ersten Lauf gilt die gelernte Normalleistung; Hahn-zu-Leistung messen, UNDER_REL = (P_HahnZu/P_normal + 1) / 2.
   P_LEARN_MIN: 900, P_LEARN_MAX: 1900, // erste Normalleistung nur in diesem Bereich übernehmen (W)
   P_ABS_DRY: 600,                // vor dem Einlernen: darunter Trockenlauf (W)
   P_ABS_OVER: 2100,              // vor dem Einlernen: darüber Überlast (W)
   I_MAX: 10.5,                   // Strom darüber = blockiert (A); Stecker selbst: 12 A
   MAX_RUN_MIN: 150,              // längster Lauf, den das Skript plant
   AUTO_OFF_S: 9600,              // Notabschaltung des Relais (160 min), wirkt auch ohne Skript
-  MAX_STARTS_H: 10,              // Starts je Stunde (diese Pumpe verträgt 20)
+  MAX_STARTS_H: 10,              // Starts je Stunde: die Hälfte des Datenblattwerts (diese Pumpe verträgt 20)
 
   // Fachwerte: nur mit Grund ändern
   UNDER_REL: 0.75,               // darunter Unterlast (Trockenlauf / Hahn zu)
@@ -62,7 +69,8 @@ var C = {
   BLANK_S: 40,                   // Anlaufzeit ohne Über-/Unterlastprüfung
   UNDER_S: 8, OVER_S: 5, NOLOAD_S: 5, I_S: 2, // so viele Sekunden muss eine Abweichung anstehen
   MIN_OFF_S: 120,                // Automatik startet frühestens 2 min nach dem letzten Stopp
-  RETRY_MIN: 60,                 // Nachlauf nach Störung frühestens nach 60 min
+  RETRY_MIN: 60,                 // Nachlauf nach Störung frühestens nach 60 min (Brunnen läuft nach)
+  RETRY_START_MIN: 6,            // Störung in den ersten 10 s (Anlauf): Nachlauf schon nach 6 min
   RETRIES_DRY: 2,                // Nachläufe je Tag nach Trockenlauf; sonst 1
   SELF_NIGHT_K: 15,              // Eigenwärme nachts, bis gelernt: eher hoch, Frost lieber zu früh erkennen [2]
   SELF_DAY_K: 10,                // Eigenwärme tags, bis gelernt: eher niedrig, lieber etwas mehr Wasser [2]
@@ -79,10 +87,10 @@ var C = {
 var ET0_CLIM = [0.6, 0.9, 1.6, 2.6, 3.5, 4.5, 4.4, 3.8, 2.4, 1.1, 0.5, 0.5];   // Grasreferenzverdunstung (mm/Tag)
 var TMAX_CLIM = [6.1, 9.3, 13.0, 17.0, 21.1, 26.3, 27.4, 27.4, 22.8, 16.7, 9.6, 6.8]; // Tageshöchstwert (°C)
 
-// LED des Steckers (Farben 0..100): aus = alles gut, gelb = ohne Internet / Uhr geschätzt,
-// violett = Störung heute (Rot zeigt die Firmware selbst bei WLAN-Problemen), blau = Pumpe läuft.
+// LED des Steckers (Farben 0..100): grün gedimmt = alles gut, gelb = ohne Internet / Uhr geschätzt,
+// violett = Störung heute, blau = Pumpe läuft. Rot belegt die Firmware (WLAN weg, Update), Blau blinkend den AP.
 // Jede Änderung ist ein Flash-Schreibvorgang: nur bei Zustandswechsel, nach 2 min Bestand, höchstens 12 am Tag [3]
-var LED = { ok: [0, 0, 0], warn: [100, 70, 0], err: [100, 0, 100], run: [0, 0, 100] };
+var LED = { ok: [0, 100, 0], warn: [100, 70, 0], err: [100, 0, 100], run: [0, 0, 100] };
 
 // ============================== Zustand ==============================
 // S wird gespeichert (Script.storage, ein Eintrag), R lebt nur im RAM.
@@ -108,10 +116,11 @@ var R = {
   boot: true,
   def: false, defAt: 0,  // Uhrzeit angenommen (15. April 10:00), weil nichts bekannt war
   pbNext: 0,         // nächste Internetprobe (Uptime), solange die Uhr geschätzt ist oder Internet fehlte
+  cfgAt: 0,          // nächstes Nachstellen von Relais-Einstellungen und Wächter (Uptime)
   led: "", ledWant: "", ledSince: 0, ledN: [],
   td: null, ty: null, ts: -1e9, // Gerätetemperatur heute / gestern {d, n, mn, mx}, letzte Messung
   z: null, zf: -1e9, zl: 0, zn: 0, cp: 0, co: 0, // Tagesgang-Uhr: letzte Korrektur, Betrag, schon gestellt, Stellen läuft
-  rh: 0, nf: false,  // Minute der nächsten Regen-Nachprüfung (0 = gleich, auch nach Neustart); Prognose heute nicht zählen
+  rh: 0, nf: false,  // Minute der nächsten Nachprüfung nach Regen oder Frost (0 = gleich, auch nach Neustart); Prognose heute nicht zählen
   la: null, lo: null, gn: 0,  // Koordinaten; nächste Ortsabfrage (Uptime)
   st: ""                 // Ergebnis des Selbsttests fürs Aufspielwerkzeug
 };
@@ -204,12 +213,16 @@ function load() {
   if (typeof v.lr !== "string") v.lr = "";  // letzter Lauf, für die Anzeige
   if (typeof v.xa !== "number") v.xa = -1;  // erster Tag, der ohne Internet geschätzt verbucht wurde
   if (!v.xe || typeof v.xe.length !== "number") v.xe = [];  // die Schätzungen dieser Tage (mm), für die Korrektur
+  if (!v.xw || typeof v.xw.length !== "number" || v.xw.length !== v.xe.length) { v.xw = []; v.xe = []; v.xa = -1; }  // davor gegossen
+  if (typeof v.xd !== "number") v.xd = 0;   // Konto vor dem ersten geschätzten Tag: die Korrektur rechnet von hier neu
   if (typeof v.ob !== "number") v.ob = -99; // gelernte Eigenwärme beim Tiefstwert (K), -99 = noch nicht
   if (typeof v.oa !== "number") v.oa = -99; // gelernte Eigenwärme beim Höchstwert (K)
   if (typeof v.df !== "number") v.df = 0;   // 1 = Uhrzeit beruht auf der Annahme 15. April 10:00
   if (typeof v.rd !== "number") v.rd = -1;  // Tag, an dem die Regenprognose die Gabe gekürzt hat
   if (typeof v.rx !== "number") v.rx = 0;   // dabei erwarteter Regen (mm)
-  if (typeof v.rc !== "number") v.rc = -1;  // Tag, an dem Regen die Gabe verhindert hat: stündlich nachsehen
+  if (typeof v.rc !== "number") v.rc = -1;  // Tag, an dem Regen oder Frost die Gabe verhindert hat: stündlich nachsehen
+  if (typeof v.rk !== "number") v.rk = 0;   // warum: 1 Frost laut Prognose, 3 Frost geschätzt, 2 Regen
+  if (typeof v.rf !== "number") v.rf = 0;   // Tiefstwert dieser Frostnacht (°C)
   if (typeof v.tu !== "number") v.tu = 0;   // Laufzeit des Geräts beim Zeitanker (s): Skript-Neustart erkennen
   if (typeof v.ce !== "number") v.ce = 0;   // 1 = Geräteuhr vom Skript geschätzt, Zeitserver hat sie seither nicht gestellt
   if (typeof v.cs !== "number") v.cs = 0;   // zuletzt vom Skript gestellte Uhrzeit, vom Zeitserver zu unterscheiden
@@ -306,15 +319,22 @@ function estEt(day) {                     // ohne Internet: Monatsmittel, an hei
 }
 // Gegossenes zuerst abziehen, dann die Tage buchen: Die Gabe kommt morgens, die Verdunstung danach. Umgekehrt
 // schnitte die 25-mm-Grenze die Verdunstung ab, und nach jeder Gabe am Deckel fehlte ein Tag.
+// Für die Korrektur merkt es sich den Stand davor (xd), je Tag das vorher Gegossene (xw) und die Schätzung (xe).
+// Mit echten Daten rechnet es die Tage dann neu durch: Ein Regentag setzt das Konto auf 0, die Tage danach zählen.
+function xDrop() {                        // ältester geschätzter Tag fällt aus der Korrektur: Startwert nachziehen
+  S.xd = lim(S.xd - S.xw[0], 0, C.D_MAX_MM) + S.xe[0];
+  S.xe.shift(); S.xw.shift(); S.xa++;
+}
 function bookEst(L) {                     // ohne Internet: offene Tage geschätzt verbuchen, für die Korrektur merken
-  var d, b;
+  var d, b, w0 = S.pi;
+  if (S.xa < 0 && S.dp + 1 < L.day) { S.xd = S.d; S.xe = []; S.xw = []; }
   S.d = lim(S.d - S.pi, 0, C.D_MAX_MM); S.pi = 0;
   for (d = S.dp + 1; d < L.day; d++) {
     b = S.d;
     S.d = lim(S.d + r1(estEt(d) * C.KC), 0, C.D_MAX_MM);
-    if (S.xa < 0) { S.xa = d; S.xe = []; }
-    S.xe.push(r1(S.d - b));               // was nach der Grenze wirklich dazukam; nur das tauscht die Korrektur
-    if (S.xe.length > 14) { S.xe.shift(); S.xa++; }
+    if (S.xa < 0) S.xa = d;
+    S.xe.push(r1(S.d - b)); S.xw.push(r1(w0)); w0 = 0;   // xe: was nach der Grenze wirklich dazukam
+    if (S.xe.length > 14) xDrop();
   }
   S.dp = L.day - 1;
 }
@@ -350,6 +370,11 @@ function frostEst() {                     // ohne Internet: Tiefstwert der Nacht
   else if (c && typeof c.tC === "number") v = c.tC;
   if (v === null) return null;
   return v - selfK(0) - (t && t.n >= 36 ? 0 : 5);   // weniger als 6 h Messwerte (Neustart): 5 K Reserve
+}
+function airNow() {                       // ohne Internet: Luft jetzt = Gerät minus Eigenwärme, nur bei ruhendem Relais;
+  var st = sw(), c = st.temperature;      // für den Frost vorsichtig: die größere Eigenwärme, ungelernt keine Angabe
+  if (S.oa < -50 || st.output || R.run || upS() - R.lastStop < 1800 || !c || typeof c.tC !== "number") return null;
+  return c.tC - Math.max(selfK(0), selfK(1));
 }
 // Tiefpunkt-Erkennung mit 3 K Schwelle. Gilt nur, wenn vorher mindestens 6 K über mindestens 6 h abgekühlt
 // und danach binnen 3 h um 5 K erwärmt wurde: dann liegt er nahe am Sonnenaufgang (DWD Mannheim) [5]
@@ -512,7 +537,7 @@ function runEnd(st) {
       var rem = r.mm - r.cr, maxR = why === "unterlast" ? C.RETRIES_DRY : 1;
       S.rt = 0;
       if ((r.k === "auto" || r.k === "retry") && rem >= 2 && S.fc <= maxR) {
-        S.rt = Math.floor(u) + C.RETRY_MIN * 60; S.rm = r1(rem);
+        S.rt = Math.floor(u) + (now - r.t0 < 10 ? C.RETRY_START_MIN : C.RETRY_MIN) * 60; S.rm = r1(rem);
       }
       R.fault = { txt: txt, u: u };
     }
@@ -537,7 +562,7 @@ function weldCheck(st) {
 function wxUrl(n) {
   return "https://api.open-meteo.com/v1/forecast?latitude=" + R.la + "&longitude=" + R.lo +
     "&daily=et0_fao_evapotranspiration,precipitation_sum,precipitation_probability_max,temperature_2m_min," +
-    "temperature_2m_max&timezone=auto&forecast_days=1&past_days=" + n;
+    "temperature_2m_max&current=temperature_2m&timezone=auto&forecast_days=1&past_days=" + n;
 }
 function fetchWx(L, n, rc) {              // rc = Regen-Nachprüfung (nur heute, nichts verbuchen)
   R.wx.busy = true; R.wx.L = L; R.wx.n = n; R.wx.rc = rc; R.wx.t = upS(); R.wx.q++;
@@ -545,36 +570,37 @@ function fetchWx(L, n, rc) {              // rc = Regen-Nachprüfung (nur heute,
 }
 function evaluate(L) {
   if (!inSeason(L)) {                     // Winterpause: Konto ruht und startet im März bei 0
-    S.ev = L.day; S.d = 0; S.pi = 0; S.dp = L.day - 1; S.rt = 0; S.xa = -1; S.xe = [];
+    S.ev = L.day; S.d = 0; S.pi = 0; S.dp = L.day - 1; S.rt = 0; S.xa = -1; S.xe = []; S.xw = [];
     R.why = "Winterpause"; save(); return;
   }
   if (S.dp < 0 || L.day - 1 - S.dp > 14) {  // erster Tag oder über 14 Tage aus (etwa über Winter): Konto neu,
     S.d = 0; S.pi = 0;                        // die letzten 14 Tage werden gebucht
     S.dp = L.day - 1 - (S.dp < 0 ? 0 : 14);
   }
-  while (S.xe.length && L.day - S.xa > 14) { S.xe.shift(); S.xa++; }   // ältere Schätzungen bleiben stehen
+  while (S.xe.length && L.day - S.xa > 14) xDrop();                 // ältere Schätzungen bleiben stehen
   if (!S.xe.length) S.xa = -1;
   if (R.la === null) { R.off = true; bookEst(L); decide(L, null, false); return; }   // Ort noch unbekannt
   fetchWx(L, L.day - (S.xa >= 0 ? S.xa : S.dp + 1), false);           // offene und geschätzte Tage holen
 }
 function num(a, i) { return (a && typeof a[i] === "number") ? a[i] : null; }
-function today(j, n) {
+function today(j, n, c) {                 // c = aktuelle Werte (Lufttemperatur jetzt)
   return { rain: num(j.precipitation_sum, n) || 0, prob: num(j.precipitation_probability_max, n) || 0,
-           tmin: num(j.temperature_2m_min, n) };
+           tmin: num(j.temperature_2m_min, n), tnow: c && typeof c.temperature_2m === "number" ? c.temperature_2m : null };
 }
 function onWx(res, err, msg, q) {
-  var L = R.wx.L, n = R.wx.n, ok = false, j = null, i, day, et, rn, v, uw;
+  var L = R.wx.L, n = R.wx.n, ok = false, o = null, j = null, i, day, et, rn, v, uw;
   if (q !== R.wx.q || !R.wx.busy) return;  // Antwort eines schon aufgegebenen Abrufs
   R.wx.busy = false;
   try {
     if (!err && res && res.code === 200) {
-      j = JSON.parse(res.body).daily;
+      o = JSON.parse(res.body); j = o.daily;
       ok = j && j.time && j.time.length === n + 1 && j.time[n] === ymd(L);
     }
   } catch (e) { ok = false; }
-  if (R.wx.rc) {                          // Nachprüfung: ohne Antwort bleibt es bei der Entscheidung von 10:00
-    R.wx.rc = false;
-    if (ok) decide(L, today(j, n), true);
+  if (R.wx.rc) {                          // Nachprüfung ohne Antwort: nach Regen bleibt es bei der Entscheidung,
+    R.wx.rc = false;                      // nach Frost misst der Gerätefühler die Luft
+    if (ok) decide(L, today(j, n, o.current), true);
+    else if (S.rc === L.day && (S.rk === 1 || S.rk === 3)) decide(L, null, true);
     return;
   }
   if (!ok) {
@@ -588,7 +614,7 @@ function onWx(res, err, msg, q) {
     decide(L, null, false);
     return;
   }
-  for (i = 0; i < n; i++) {               // offene Tage verbuchen, geschätzte mit echten Daten korrigieren
+  for (i = 0; i < n; i++) {               // offene Tage verbuchen, geschätzte mit echten Daten neu rechnen
     day = L.day - n + i;
     et = num(j.et0_fao_evapotranspiration, i);
     rn = num(j.precipitation_sum, i);
@@ -597,9 +623,12 @@ function onWx(res, err, msg, q) {
     v = et * C.KC - Math.max(0, rn - C.RAIN_LOSS_MM);
     if (day > S.dp) {                     // offener Tag; davor das seither Gegossene (wie bookEst)
       S.d = lim(lim(S.d - S.pi, 0, C.D_MAX_MM) + v, 0, C.D_MAX_MM); S.pi = 0;
-    } else if (S.xa >= 0 && day >= S.xa) S.d = lim(S.d + v - (S.xe[day - S.xa] || 0), 0, C.D_MAX_MM);
+    } else if (S.xa >= 0 && day >= S.xa) {  // geschätzter Tag: ab dem Stand davor neu, mit dem damals Gegossenen
+      if (day === S.xa) S.d = S.xd;
+      S.d = lim(lim(S.d - (S.xw[day - S.xa] || 0), 0, C.D_MAX_MM) + v, 0, C.D_MAX_MM);
+    }
   }
-  S.xa = -1; S.xe = [];
+  S.xa = -1; S.xe = []; S.xw = [];
   S.d = lim(S.d - S.pi, 0, C.D_MAX_MM); S.pi = 0; S.dp = L.day - 1;
   R.nf = false;
   if (n >= 1) {                           // gestern: kam der angekündigte Regen? Eigenwärme lernen
@@ -608,30 +637,41 @@ function onWx(res, err, msg, q) {
     learnSelf(L, num(j.temperature_2m_min, n - 1), num(j.temperature_2m_max, n - 1));
   }
   R.off = false;                          // die Uhr bleibt geschätzt, bis der Zeitserver sie stellt
-  decide(L, today(j, n), false);
+  decide(L, today(j, n, o.current), false);
 }
-function decide(L, w, rc) {               // w = Prognose heute oder null (ohne Internet); rc = Regen-Nachprüfung
-  var D = prov(L), rainExp = 0, dose = 0, t = nowU(), nm = t ? loc(t).min : L.min, res;
+// Frost sperrt nicht den ganzen Tag: Nach einer Frostnacht gießt die Automatik, sobald die Luft FROST_THAW_C hat
+// (Nachprüfung stündlich bis END_MIN). Eine noch gefrorene Leitung wirkt wie ein zugedrehter Hahn: Unterlast [4].
+// Bei der Nachprüfung bleibt die Frostnacht von 10:00 stehen, neu sind nur die Luft und die Regenprognose.
+function decide(L, w, rc) {               // w = Prognose heute oder null (ohne Internet); rc = Nachprüfung
+  var D = prov(L), rainExp = 0, dose = 0, t = nowU(), nm = t ? loc(t).min : L.min, res, fr = null, est = false, air,
+      k = rc && S.rc === L.day ? S.rk : 0;  // Grund der Nachprüfung: 1 Frost (Prognose), 3 Frost (geschätzt), 2 Regen
   R.wx.tries = 0;
   if (R.run) { save(); return; }          // Handgabe läuft: geprüft wird danach, der Tag bleibt offen
-  S.ev = L.day; S.rc = -1;
+  S.ev = L.day; S.rc = -1; S.rk = 0;
+  if (k === 1 || k === 3) { fr = S.rf; est = k === 3; }
+  else if (w && w.tmin !== null) fr = w.tmin < C.FROST_C ? w.tmin : null;   // Frostnacht laut Prognose
+  else if ((fr = frostEst()) !== null) {  // sonst Gerätefühler, auch wenn der Wert fehlt
+    if (fr >= C.FROST_OFF_C) fr = null; else est = true;
+  }
+  air = (w && w.tnow !== null) ? w.tnow : airNow();                       // Luft jetzt
   if (!autoOn()) R.why = "Automatik aus";
   else if (paused(L)) R.why = "Pause bis " + dmy(S.pu);
-  else if (w && w.tmin !== null && w.tmin < C.FROST_C) R.why = "Frostsperre (" + f1(w.tmin) + " °C)";
-  else if ((!w || w.tmin === null) && (t = frostEst()) !== null && t < C.FROST_OFF_C) {   // auch wenn der Wert fehlt
-    R.why = "Frostsperre (geschätzt " + f1(t) + " °C)";
-  }
   else if (D < C.TRIGGER_MM) R.why = "nicht nötig (" + f1(D) + " mm)";
+  else if (fr !== null && !(air >= C.FROST_THAW_C)) {
+    R.why = "Frostsperre (" + (est ? "geschätzt " : "") + f1(fr) + " °C), gießt ab " + C.FROST_THAW_C + " °C";
+    S.rc = L.day; S.rk = est ? 3 : 1; S.rf = r1(fr); R.rh = (Math.floor(nm / 60) + 1) * 60 + 5;
+  }
   else {
     if (w && w.prob >= C.RAIN_PROB_MIN && !R.nf) rainExp = Math.max(0, w.rain - C.RAIN_LOSS_MM);
     dose = Math.min(C.DOSE_MAX_MM, D - rainExp);
     if (rainExp > 0 && dose < Math.min(C.DOSE_MAX_MM, D)) { S.rd = L.day; S.rx = r1(rainExp); }   // Prognose kürzt
     else if (S.rd === L.day) S.rd = -1;   // volle Gabe, etwa nach Absage bei der Nachprüfung
-    if (dose < C.DOSE_MIN_MM) {
-      R.why = "Regen erwartet (" + f1(w.rain) + " mm, " + w.prob + " %)" + (rc ? ", " + hm(nm) + " bestätigt" : "");
-      S.rc = L.day; R.rh = (Math.floor(nm / 60) + 1) * 60 + 5;   // stündlich nachsehen, 5 min nach der vollen Stunde
-    } else if (nm >= C.END_MIN) { R.why = hm(C.END_MIN) + " vorbei, nicht mehr gestartet"; dose = 0; }
-    else R.why = (rc ? "Regen abgesagt, " : "") + "gegossen " + f1(secsFor(dose) * rate() / 3600) + " mm" +
+    if (dose < C.DOSE_MIN_MM && rainExp > 0) {
+      R.why = "Regen erwartet (" + f1(w.rain) + " mm, " + w.prob + " %)" + (k === 2 ? ", " + hm(nm) + " bestätigt" : "");
+      S.rc = L.day; S.rk = 2; R.rh = (Math.floor(nm / 60) + 1) * 60 + 5;   // stündlich nachsehen, 5 min nach der vollen Stunde
+    } else if (dose < C.DOSE_MIN_MM) R.why = "nicht nötig (" + f1(D) + " mm)";   // nur wenn TRIGGER_MM < DOSE_MIN_MM
+    else if (nm >= C.END_MIN) { R.why = hm(C.END_MIN) + " vorbei, nicht mehr gestartet"; dose = 0; }
+    else R.why = (k === 2 ? "Regen abgesagt, " : (k ? "Frost vorbei, " : "")) + "gegossen " + f1(secsFor(dose) * rate() / 3600) + " mm" +
       (R.nf ? " (gestern Regen ausgeblieben)" : "");   // Menge nach der Laufzeitgrenze (MAX_RUN_MIN)
   }
   log("Tagesprüfung: Defizit " + r1(D) + " mm" + (w ? "" : " (ohne Internet)") + " -> " + R.why);
@@ -703,6 +743,7 @@ function shiftDays(k) {                   // die Annahme 15. April war falsch: T
 }
 function schedule() {
   if (R.defAt && upS() >= R.defAt) defTime();
+  if (upS() >= R.cfgAt) { R.cfgAt = upS() + 3600; applyCfg(); watchdog(); }   // stündlich: Notabschaltung, Wächter
   var u = nowU();
   if (!u) return;
   var L = loc(u), now = upS();
@@ -731,7 +772,8 @@ function schedule() {
     evaluate(L);
   }
   if (S.rc === L.day && L.min >= R.rh && L.min < C.END_MIN && !R.wx.busy && !R.run && !R.ps) {
-    R.rh = (Math.floor(L.min / 60) + 1) * 60 + 5; fetchWx(L, 0, true);   // klappt der Abruf nicht: nächste Stunde
+    R.rh = (Math.floor(L.min / 60) + 1) * 60 + 5;        // klappt der Abruf nicht: nächste Stunde
+    if (R.off) decide(L, null, true); else fetchWx(L, 0, true);   // ohne Internet: Frost nach Gerätefühler
   }
   if (R.want) {
     if (u > R.want.exp || !autoOn() || L.min >= C.END_MIN) R.want = null;
@@ -798,7 +840,6 @@ function ledInit() {                       // aktuellen LED-Zustand lesen, damit
 }
 function ledUpdate(L) {
   var want = "ok", now = upS(), a = [], i;
-  if (R.led === "x") return;               // Gerät ohne LED-Steuerung
   if (R.weld || (R.fault && L && L.day === loc(R.fault.u).day)) want = "err";
   else if (!L || R.off || R.est) want = "warn";
   if (want !== R.ledWant) { R.ledWant = want; R.ledSince = now; }
@@ -808,9 +849,11 @@ function ledUpdate(L) {
   if (a.length >= 12) return;
   R.led = want; R.ledN.push(now);
   Shelly.call("PLUGS_UI.SetConfig", { config: { leds: { mode: "switch", colors: { "switch:0": {
-    on: { rgb: LED.run, brightness: 60 }, off: { rgb: LED[want], brightness: want === "ok" ? 0 : 60 } } } } } }, onLed);
+    on: { rgb: LED.run, brightness: 60 }, off: { rgb: LED[want], brightness: want === "ok" ? 20 : 60 } } } } } }, onLed);
 }
-function onLed(res, err, msg) { if (err) { log("LED nicht steuerbar: " + msg); R.led = "x"; } }
+function onLed(res, err, msg) {           // nicht geklappt: in 1 h nochmal (höchstens 12 Versuche am Tag)
+  if (err) { log("LED nicht gesetzt: " + msg); R.led = "?"; R.ledSince = upS() + 3480; }
+}
 function tick() {
   var st;
   R.k++;
@@ -840,6 +883,7 @@ function applyCfg() {                     // Firmware-Sicherungen, nur schreiben
   if (c.name !== "Brunnenpumpe") { want.name = "Brunnenpumpe"; need = true; }
   if (need) Shelly.call("Switch.SetConfig", { id: 0, config: want }, cbNone);
 }
+var WD_SPEC = "0 */5 * * * *";            // Wächter: alle 5 min Script.Start (läuft es schon, passiert nichts)
 function watchdog() { Shelly.call("Schedule.List", {}, onSchedList); }
 function onSchedList(res, err, msg) {     // Wächter: Gerätezeitplan startet das Skript, falls es steht [4]
   var jobs = (res && res.jobs) || [], i, j, c;
@@ -847,12 +891,17 @@ function onSchedList(res, err, msg) {     // Wächter: Gerätezeitplan startet d
   for (i = 0; i < jobs.length; i++) {
     c = jobs[i].calls || [];
     for (j = 0; j < c.length; j++) {
-      if (String(c[j].method).toLowerCase() === "script.start" && c[j].params && c[j].params.id === Script.id) return;
+      if (String(c[j].method).toLowerCase() === "script.start" && c[j].params && c[j].params.id === Script.id) {
+        if (jobs[i].enable !== true || jobs[i].timespec !== WD_SPEC) {   // abgeschaltet oder alter Takt: richten
+          Shelly.call("Schedule.Update", { id: jobs[i].id, enable: true, timespec: WD_SPEC }, cbNone);
+        }
+        return;
+      }
     }
   }
-  Shelly.call("Schedule.Create", { enable: true, timespec: "0 50 * * * *",
+  Shelly.call("Schedule.Create", { enable: true, timespec: WD_SPEC,
     calls: [{ method: "Script.Start", params: { id: Script.id } }] }, cbNone);
-  log("Wächter angelegt: Zeitplan startet das Skript stündlich, falls es steht");
+  log("Wächter angelegt: Zeitplan startet das Skript alle 5 min, falls es steht");
 }
 function init() {
   load();
@@ -870,10 +919,9 @@ function init() {
     Shelly.call("Sys.SetTime", { unixtime: S.cs }, cbNone);
     log("Uhr aus Zeitanker geschätzt"); save();
   } else R.defAt = up + 120;               // kein Anker: 2 min auf den Zeitserver warten
-  applyCfg();
+  applyCfg(); watchdog(); R.cfgAt = up + 3600;   // danach stündlich aus schedule()
   ledInit();
   vcNext();
-  watchdog();
   Timer.set(1000, true, tick);
   log("gestartet, Bodenkonto " + r1(S.d) + " mm, Normalleistung " + (S.pn || "noch nicht gelernt"));
 }

@@ -1,5 +1,5 @@
 [BW] gestartet, Bodenkonto 14 mm, Normalleistung 1320
-[BW] Wächter angelegt: Zeitplan startet das Skript stündlich, falls es steht
+[BW] Wächter angelegt: Zeitplan startet das Skript alle 5 min, falls es steht
 [BW] Ort Ludwigshafen am Rhein: 49.48, 8.45
 [BW] Tagesprüfung: Defizit 14 mm -> gegossen 14 mm
 [BW] Start auto 14 mm, 98 min
@@ -16,9 +16,9 @@
 [BW] Pumpe aus: Ende/Stopp, 6 mm gegeben
 [BW] Tagesprüfung: Defizit 3.4 mm -> nicht nötig (3,4 mm)
 ## Relais: AN 10:00 T20970 skript | AUS 10:20 T20970 skript | AN 11:20 T20970 skript | AUS 12:37 T20970 timer | AN 18:00 T20970 taster | AUS 18:41 T20970 timer
-## Zustand: {"v":1,"t":1811923201,"d":3.4,"dp":20970,"pi":0,"ev":20971,"pn":1320,"ln":5,"pu":0,"fd":20970,"fc":1,"rt":0,"rm":11.1,"lr":"01.06. 18:00 Hand 6 mm","xa":-1,"xe":[],"ob":-99,"oa":-99,"df":0,"rd":-1,"rx":0,"rc":-1,"tu":90001,"ce":0,"cs":0,"la":49.48,"lo":8.45,"pz":"DELudwigshafen am Rhein"}
+## Zustand: {"v":1,"t":1811923201,"d":3.4,"dp":20970,"pi":0,"ev":20971,"pn":1320,"ln":5,"pu":0,"fd":20970,"fc":1,"rt":0,"rm":11.1,"lr":"01.06. 18:00 Hand 6 mm","xa":-1,"xe":[],"xw":[],"xd":0,"ob":-99,"oa":-99,"df":0,"rd":-1,"rx":0,"rc":-1,"rk":0,"rf":0,"tu":90001,"ce":0,"cs":0,"la":49.48,"lo":8.45,"pz":"DELudwigshafen am Rhein"}
 ## Status: Heute: nicht nötig (3,4 mm) · Zuletzt 01.06. 18:00 Hand 6 mm · Pumpe normal 1320 W
-## Zeitplaene: [{"enable":true,"timespec":"0 50 * * * *","calls":[{"method":"Script.Start","params":{"id":1}}]}] | LED: {"leds":{"mode":"switch","colors":{"switch:0":{"on":{"rgb":[0,0,100],"brightness":60},"off":{"rgb":[0,0,0],"brightness":0}}}}}
-## Zahlen: Schreibvorgaenge 11, LED 3, Konfig 13, Fehler 0, RPC max 3, Timer max 1, Speicher max 4067 von 8192 Bloecken
+## Zeitplaene: [{"enable":true,"timespec":"0 */5 * * * *","calls":[{"method":"Script.Start","params":{"id":1}}],"id":1}] | LED: {"leds":{"mode":"switch","colors":{"switch:0":{"on":{"rgb":[0,0,100],"brightness":60},"off":{"rgb":[0,100,0],"brightness":20}}}}}
+## Zahlen: Schreibvorgaenge 11, LED 3, Konfig 13, Fehler 0, RPC max 3, Timer max 1, Speicher max 4217 von 8192 Bloecken
 ## ENDE
 exit 0

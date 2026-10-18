@@ -1,19 +1,19 @@
 verfahren,jahr,gegossen,laeufe,stresstage,versickert
-Skript mit Prognose,2022,527,53,11,2
-Skript mit Prognose,2023,464,48,1,0
+Skript mit Prognose,2022,528,56,0,0
+Skript mit Prognose,2023,471,49,0,0
 Skript mit Prognose,2024,295,32,1,0
-Skript mit Prognose,2025,464,46,10,4
-Skript mit Prognose,2026,557,59,0,0
-Skript ohne Prognose,2022,543,53,11,5
-Skript ohne Prognose,2023,480,49,1,0
+Skript mit Prognose,2025,464,48,1,0
+Skript mit Prognose,2026,560,60,0,0
+Skript ohne Prognose,2022,545,56,0,0
+Skript ohne Prognose,2023,484,50,0,0
 Skript ohne Prognose,2024,354,37,0,0
-Skript ohne Prognose,2025,491,48,9,4
-Skript ohne Prognose,2026,568,58,0,0
-Skript ohne Internet,2022,736,75,19,185
-Skript ohne Internet,2023,706,71,8,215
-Skript ohne Internet,2024,678,68,1,289
-Skript ohne Internet,2025,703,67,13,196
-Skript ohne Internet,2026,746,72,15,166
+Skript ohne Prognose,2025,489,50,0,0
+Skript ohne Prognose,2026,568,59,0,0
+Skript ohne Internet,2022,745,79,0,183
+Skript ohne Internet,2023,707,73,9,219
+Skript ohne Internet,2024,682,71,1,297
+Skript ohne Internet,2025,705,72,0,184
+Skript ohne Internet,2026,754,76,2,161
 Bodenfeuchte ideal,2022,535,41,0,0
 Bodenfeuchte ideal,2023,489,37,0,0
 Bodenfeuchte ideal,2024,315,25,0,0
