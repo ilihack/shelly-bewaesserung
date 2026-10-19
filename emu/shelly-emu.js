@@ -8,6 +8,7 @@
  * Script.storage: Schlüssel <= 16 Byte, Wert <= 1024 Byte, <= 12 Einträge.
  */
 const vm = require('vm');
+const CFG_RPC = ['Switch.SetConfig', 'Virtual.Add', 'Group.Set', 'PLUGS_UI.SetConfig', 'Schedule.Create', 'Schedule.Update'];
 // Gerätefassung schreibt Umlaute als UTF-8-Bytes (\xHH); für Prüfungen wieder als Text lesen
 function asUtf8(x) {
   if (typeof x !== 'string' || /[^\x00-\xFF]/.test(x) || !/[\x80-\xFF]/.test(x)) return x;
@@ -56,6 +57,7 @@ class World {
     this.storageWrites = [];            // Zeitpunkte der Schreibvorgänge
     this.vc = {};                       // key -> {type,id,config,value}
     this.cfgWrites = 0;                 // Konfigurationsschreibvorgänge (Switch/VC/Group)
+    this.cfgCallT = [];                 // Zeitpunkte aller Versuche, Einstellungen zu schreiben (auch abgelehnte)
     this.swCfg = { id: 0, name: null, in_locked: false, initial_state: 'restore_last', auto_on: false,
       auto_on_delay: 60, auto_off: false, auto_off_delay: 60, power_restore_delay_enable: false,
       power_restore_delay: 60, autorecover_voltage_errors: false, power_limit: 2500, voltage_limit: 280,
@@ -322,9 +324,11 @@ class World {
         if (dev.rpcOpen >= 5) throw new Error('RPC-Limit 5 überschritten (' + method + ')');
         dev.rpcOpen++; w.limits.rpc = Math.max(w.limits.rpc, dev.rpcOpen);
         let res = null, err = 0, msg = '', lat = 30, post = null;
+        if (CFG_RPC.indexOf(method) >= 0) w.cfgCallT.push(w.t);   // Einstellungen schreiben (Flash): jeder Versuch zählt
         try {
           switch (method) {
             case 'Switch.Set': {
+              if (params.on && w.switchRefuse > 0) { w.switchRefuse--; err = -103; msg = 'overtemperature'; break; }   // Test
               w.setOutput(!!params.on, 'loopback', params.on ? params.toggle_after : null);
               res = { was_on: true }; break;
             }
@@ -365,6 +369,7 @@ class World {
             case 'Schedule.Update': {
               const job = w.jobs.find((x) => x.id === params.id);
               if (!job) { err = -105; msg = 'no such job'; break; }
+              if (w.scheduleUpdateIgnored) { res = { rev: w.jobs.length }; break; }   // Test: Firmware nimmt es an, ändert nichts
               Object.assign(job, JSON.parse(JSON.stringify(params))); w.cfgWrites++; res = { rev: w.jobs.length }; break;
             }
             case 'HTTP.GET': {
@@ -373,7 +378,10 @@ class World {
               if (!w.internet || w.httpFail) { err = -1; msg = 'Failed to connect'; lat = (params.timeout || 10) * 1000; break; }
               const code = w.httpCode ? w.httpCode(params.url) : 200;      // Test: der Dienst antwortet mit einem Fehler
               res = { code, message: code === 200 ? 'OK' : 'Service Unavailable', headers: w.httpDate === false ? {} : { date: new Date(w.t + 300).toUTCString() },   // Serverzeit
-                body: code !== 200 ? '' : params.url.indexOf('geocoding-api') > 0 ? w.geoBody(params.url) : w.weatherBody(params.url) }; break;
+                body: code !== 200 ? '' : params.url.indexOf('geocoding-api') > 0 ? w.geoBody(params.url) :
+                  params.url.indexOf('geojs.io') > 0 ? w.ipBody() : w.weatherBody(params.url) };
+              if (params.url.indexOf('geojs.io') > 0 && w.ipGeo === null) res = { code: 503, message: 'Service Unavailable', headers: {}, body: '' };
+              break;
             }
             default: err = -114; msg = 'Method ' + method + ' not found';
           }
@@ -459,6 +467,10 @@ class World {
   eval(code) { return require('vm').runInContext(code, this.dev.ctx); }   // wie Script.Eval
 
   // ---------- Ortssuche (Open-Meteo-Geocoding): bekannte Orte, sonst leere Antwort wie beim echten Dienst ----------
+  ipBody() {                            // IP-Ortung wie GeoJS (Zahlen als Text); w.ipGeo: eigener Ort, null = Dienst gestört
+    const g = this.ipGeo || { latitude: '49.4874', longitude: '8.4660', accuracy: 20, city: 'Mannheim', country_code: 'DE', timezone: 'Europe/Berlin' };
+    return JSON.stringify(Object.assign({ ip: '192.0.2.10', country: 'Germany', organization_name: 'Test' }, g));
+  }
   geoBody(url) {
     const q = Object.fromEntries(new URL(url).searchParams);
     const orte = this.orte || { 'DE|Ludwigshafen am Rhein': [49.48121, 8.44641], 'DE|München': [48.13743, 11.57549] };

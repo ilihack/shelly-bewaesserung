@@ -18,16 +18,21 @@ Ein Skript für den **Shelly Outdoor Plug S Gen3**: Der Stecker schaltet eine Br
   - Wächter, Einschaltzustand und Notabschaltung stellt das Skript stündlich nach, falls sie in der App verstellt wurden. Das Firmware-Update legt es nur an, wenn es keines gibt: In der App abgeschaltet, bleibt es aus.
   - Ein Fehler beim Verarbeiten einer Antwort hält das Skript nicht an. Es verwirft das Halbverbuchte und versucht es später nochmal.
   - Fehlt ein Bedienelement, etwa in der App gelöscht, legt das Skript es binnen einer Minute neu an.
+  - Eine Schreibbremse schützt den Flash-Speicher, auch vor einem Programmfehler: Den Zustand schreibt es höchstens einmal je Minute und nach 48 Schreibvorgängen am Tag nur noch stündlich. Ein Skript-Neustart schreibt nichts, und die Bremse zählt über Neustarts weiter: Eine Absturzschleife, in der der Wächter das Skript alle 5 min neu startet, schreibt so nicht bei jedem Start. Einstellungen schreibt es nur, wenn sie abweichen: Bedienfeld und Zeitpläne höchstens 30-mal am Tag, die LED höchstens 12-mal; die Relais-Sicherungen stellt es immer zurück.
 - **Kommt ohne Internet aus.**
   - Es rechnet mit Monatsmitteln und der Temperatur seines eigenen Fühlers. Die Eigenwärme des Steckers lernt es selbst.
   - Ohne Internet gießt es lieber etwas mehr.
   - Kommt das Internet zurück, rechnet es die geschätzten Tage mit echten Daten neu, bis 14 Tage rückwirkend.
+- **Findet seinen Ort.** Aus dem Ortsnamen oder mit `ORT: "auto"` über die IP-Adresse.
+  - Eine IP-Ortung prüft täglich, ob der Ort passt. Liegt der Name mehr als 100 km und mehr als die doppelte Ungenauigkeit der IP-Ortung daneben (etwa ein gleichnamiger Ort), zeigt der Status „Ort prüfen“ und die LED gelb; es gilt weiter der Name.
+  - Findet die Ortssuche den Namen nicht, nimmt es den Ort aus der IP-Ortung, meldet das und sucht den Namen täglich nochmal.
+  - Bei `ORT: "auto"` ersetzt eine genauere IP-Ortung eine ungenaue.
 - **Übersteht Stromausfälle.** Alle 6 h speichert es einen Zeitanker.
-  - Erreicht der Shelly den Zeitserver nicht, wohl aber das Internet, nimmt es die Uhrzeit aus den Antworten des Wetterdienstes.
+  - Die Uhrzeit hat zwei Wege: den Zeitserver und die Uhrzeit, die jede https-Antwort mitbringt (Wetterdienst, Ortssuche, IP-Ortung). So stimmt sie auch, wenn nur der Zeitserver gesperrt ist, und schon vor dem ersten Ort.
   - Bleibt das Internet ganz weg, stellt es die Uhr nach der nächsten klaren Nacht am Tagesgang der Temperatur nach.
 - **Wird bedient** über den Taster am Stecker oder den Schalter in der App: einmal drücken ist eine Handgabe, nochmal drücken stoppt sie.
   - Dazu kommt ein Bedienfeld in der Shelly-App: Status, Wasserdefizit, Automatik, Pause, Regenrate, Pumpe neu einlernen.
-  - Die LED zeigt in voller Helligkeit: grün = alles gut, blau = Pumpe läuft, gelb = ohne Internet, violett = Störung. Rot gehört der Firmware (WLAN weg, Update), blaues Blinken dem Access Point.
+  - Die LED zeigt in voller Helligkeit: grün = alles gut, blau = Pumpe läuft, gelb = Daten fehlen (Wetterdienst, Uhr, Ort oder Speicher), violett = der letzte Lauf hatte eine Störung oder die Firmware hat das Einschalten abgelehnt. Violett bleibt, bis ein Lauf wieder eine Minute fehlerfrei gepumpt hat, auch über Mitternacht und Neustarts; die Statuszeile nennt die Störung mit Datum. Rot gehört der Firmware (WLAN weg, Update), blaues Blinken dem Access Point.
 
 ## Was du brauchst
 
@@ -43,8 +48,8 @@ Alles Einstellbare steht oben im Skript (`src/bewaesserung.js`, Block `C`):
 
 | Wert | Bedeutung |
 | --- | --- |
-| `ORT`, `LAND` | Ortsname und Land (ISO-Kürzel). Die Koordinaten holt das Skript einmal von Open-Meteo und speichert sie. Die Schreibweise prüft die [Ortssuche von Open-Meteo](https://geocoding-api.open-meteo.com/v1/search?countryCode=DE&language=de&name=Ludwigshafen) (Namen im Link ersetzen); der erste Treffer zählt. Postleitzahlen findet sie nicht. |
-| `LAT`, `LON` | Wer sie kennt, trägt sie direkt ein; dann entfällt die Abfrage. |
+| `ORT`, `LAND` | Ortsname und Land (ISO-Kürzel), oder `ORT: "auto"`: dann bestimmt die IP-Adresse den Ort ([GeoJS](https://www.geojs.io), Daten von MaxMind GeoLite; in Deutschland liegen laut [MaxMind](https://www.maxmind.com/en/city_accuracy) gut zwei Drittel der Anschlüsse innerhalb 50 km). Die Koordinaten holt das Skript einmal und speichert sie. Die Schreibweise prüft die [Ortssuche von Open-Meteo](https://geocoding-api.open-meteo.com/v1/search?countryCode=DE&language=de&name=Ludwigshafen) (Namen im Link ersetzen); der erste Treffer zählt. Postleitzahlen findet sie nicht. |
+| `LAT`, `LON` | Wer sie kennt, trägt sie direkt ein; dann entfallen Ortssuche und IP-Ortung samt täglicher Ortsprüfung. |
 | `UTC_H` | Normalzeit gegen UTC (Deutschland 1); Sommerzeit nach EU-Regel. |
 | `START_MIN`, `END_MIN` | Prüfzeit (10:00) und letzte Startzeit der Automatik (12:30), in Minuten nach Mitternacht. |
 | `SEASON_FROM`, `SEASON_TO` | Monate mit Automatik. |
@@ -120,7 +125,7 @@ In der Shelly-App keine eigenen Zeitpläne zum Schalten des Steckers anlegen. Di
 
 ### Sicherheit
 
-Das Skript öffnet keinen eigenen Zugang; bedient wird es nur über das Gerät und die Shelly-App. Es ruft nur feste Adressen von Open-Meteo über https auf und prüft die Antworten auf Grenzen. Zu schützen ist das Gerät:
+Das Skript öffnet keinen eigenen Zugang; bedient wird es nur über das Gerät und die Shelly-App. Es ruft nur feste Adressen von Open-Meteo und GeoJS über https auf und prüft die Antworten auf Grenzen. GeoJS sieht dabei einmal am Tag die IP-Adresse deines Anschlusses, wie jeder Server, den man aufruft; mit eingetragenen `LAT` und `LON` wird GeoJS nicht gefragt. Zu schützen ist das Gerät:
 - Ein **Gerätepasswort** setzen, beim Aufspielen mit `--neues-passwort` oder auf der Weboberfläche unter *Settings → Device settings → Authentication*. Ohne Passwort kann jeder im WLAN die Pumpe schalten oder das Skript ersetzen.
 - Das **Shelly-Konto** mit Zwei-Faktor-Anmeldung schützen, wenn die Cloud an ist.
 - **Firmware aktuell halten:** Das erledigt der Update-Zeitplan jede Nacht. Nach einem großen Update (neue Hauptversion) das Aufspielwerkzeug nochmal laufen lassen; es prüft danach alles.
@@ -129,7 +134,7 @@ Das Skript öffnet keinen eigenen Zugang; bedient wird es nur über das Gerät u
 
 | Befehl | prüft |
 | --- | --- |
-| `node emu/scenarios.js [skript]` | 53 Szenarien im Emulator, für Quelltext und Gerätefassung. Der Emulator bildet Relais, Leistung, Firmware-Schutz, Uhr mit Zeitserver, Stromausfall, Speicher, Bedienfeld, Wetterdienst und Gerätetemperatur nach und wacht über die Grenzen der Firmware. |
+| `node emu/scenarios.js [skript]` | 62 Szenarien im Emulator, für Quelltext und Gerätefassung. Der Emulator bildet Relais, Leistung, Firmware-Schutz, Uhr mit Zeitserver, Stromausfall, Speicher, Bedienfeld, Wetterdienst, Ortssuche, IP-Ortung und Gerätetemperatur nach und wacht über die Grenzen der Firmware. Die Datumsprüfung der TLS-Zertifikate bildet er nicht nach. |
 | `node emu/zufall.js [skript] [läufe] [tage]` | Zufallstest: wochenlang Stromausfälle, Internet- und Zeitserverausfälle, kaputte Wetterantworten, Pumpenstörungen beim Anlauf und mitten im Lauf, Tastendrücke und Neustarts; prüft Regeln, die immer gelten müssen |
 | `sh tools/espruino-run.sh build/bewaesserung.min.js [espruino]` | ein Tag im echten Espruino-Interpreter, auf dem die Shelly-Skriptsprache beruht ([Espruino](https://github.com/espruino/Espruino) für Linux bauen, Pfad als zweites Argument) |
 | `node emu/deploy-test.js`, `emu/browser-deploy-test.js` | Aufspielwerkzeug gegen einen nachgebauten Shelly mit Firmware-Update, https, Passwort und Wächter, per Node und im Browser (braucht Playwright: `npm install --no-save playwright && npx playwright install chromium`) |
@@ -155,15 +160,17 @@ Das Skript gießt 97 % der Menge eines idealen Bodensensors; seine zwei Stressta
 
 ## Grenzen
 
-- **Was noch am echten Gerät zu prüfen ist:** wie viel Leistung die Pumpe bei zugedrehtem Hahn zieht und wie viel Arbeitsspeicher das Skript braucht (Gerätefassung 26,4 KB); das Aufspielwerkzeug misst den Speicher. Anmelden und Setzen des Gerätepassworts folgen der Shelly-Doku, gelaufen sind sie bisher nur gegen den Nachbau.
+- **Was noch am echten Gerät zu prüfen ist:** wie viel Leistung die Pumpe bei zugedrehtem Hahn zieht und wie viel Arbeitsspeicher das Skript braucht (Gerätefassung 29,4 KB); das Aufspielwerkzeug misst den Speicher. Anmelden und Setzen des Gerätepassworts folgen der Shelly-Doku, gelaufen sind sie bisher nur gegen den Nachbau.
 - **Steht das Skript dauerhaft,** etwa weil ein Firmware-Update es nicht mehr starten lässt, bleibt die LED auf ihrer letzten Farbe. Die Pumpe schützt dann nur noch die Firmware: Einschaltzustand aus, Notabschaltung nach 160 min. Ob das Skript läuft, zeigt die Weboberfläche unter *Scripts*.
 - **Die Nachprüfung um 11:05 und 12:05 sieht im Sommer meist dieselbe Prognose wie um 10:00.** Das Wettermodell ICON-D2 des DWD rechnet alle 3 h; der Lauf von 11:00 Sommerzeit ist erst gegen 12:35 abrufbar. Die Nachprüfung hilft bei Frost, bei verspäteten Läufen und im Winterhalbjahr.
-- **Firmware ab 2.0 prüft das Datum von TLS-Zertifikaten.** Ist die Uhr nur angenommen (erster Start ohne Internet), klappt HTTPS erst, wenn der Zeitserver die Uhr gestellt hat. Bis dahin rechnet das Skript wie ohne Internet.
+- **Firmware ab 2.0 prüft das Datum von TLS-Zertifikaten.** Ist die Uhr nur angenommen (erster Start ohne Internet) oder nach wochenlangem Ausfall weit daneben, klappt HTTPS erst, wenn der Zeitserver die Uhr gestellt hat; der zweite Weg über die Uhrzeit in den Antworten hilft dann nicht. Bis dahin rechnet das Skript wie ohne Internet. Ob die Firmware HTTPS mit noch gar nicht gestellter Uhr zulässt, ist nicht dokumentiert.
+- **IP-Ortung ist ungefähr.** In Deutschland liegt sie laut MaxMind bei knapp einem Drittel der Anschlüsse mehr als 50 km neben dem Ort, etwa beim Netzknoten des Anbieters. Darum gilt ein eingetragener Ortsname immer vor der IP-Ortung; die prüft ihn nur. Meldet die Prüfung „Ort prüfen“, obwohl der Name stimmt, `LAT` und `LON` eintragen: Dann entfällt sie. Ist GeoJS nicht erreichbar, fehlt nur diese Prüfung (bei `ORT: "auto"` der Ort).
 - **Open-Meteo fällt gelegentlich für Minuten bis etwa eine Stunde aus.** Das Skript versucht es deshalb viermal über eine Stunde, danach rechnet es mit Schätzwerten. Zwei Abrufe kurz hintereinander können leicht verschiedene Prognosen liefern.
 
 ## Quellen und Daten
 
 - Wetter: [Open-Meteo](https://open-meteo.com) (CC BY 4.0), Modell [DWD ICON](https://open-meteo.com/en/docs/dwd-api)
+- IP-Ortung: [GeoJS](https://www.geojs.io/docs/v1/endpoints/geo/), Daten von MaxMind GeoLite
 - Jahresrechnung: Datenbasis Deutscher Wetterdienst, [Climate Data Center](https://opendata.dwd.de/climate_environment/CDC/)
 - Bodenwasserhaushalt: [FAO Irrigation and Drainage Paper 56](https://www.fao.org/4/x0490e/x0490e00.htm)
 - [Shelly-API-Dokumentation](https://shelly-api-docs.shelly.cloud/gen2/), darin [Anmeldung](https://shelly-api-docs.shelly.cloud/gen2/General/Authentication)

@@ -30,6 +30,7 @@ const mock = (opt) => new Promise((res) => startMock(res, opt));
       r.bedienfeld.length === 7 && /Bereit|Heute/.test(r.status || ''), JSON.stringify(m.state));
     pruefe('a) Firmware auf die neueste gebracht', m.state.updates === 1 && m.state.ver === '2.1.0', m.state.ver);
     pruefe('a) Selbsttest im Skript ok', m.state.evals === 2 && m.world.logs.some((l) => /Selbsttest Wetter: ok/.test(l.msg)), '');
+    pruefe('a) IP-Ortung vom Gerät geprüft', r.schritte.some((t) => /IP-Ortung vom Gerät: ok Mannheim/.test(t)), JSON.stringify(r.schritte));
     pruefe('a) offener Access Point abgeschaltet', m.state.ap === false, String(m.state.ap));
     pruefe('a) Wächter startet ein angehaltenes Skript', r.waechterPlan && r.waechter && m.state.cron >= 1, JSON.stringify({ plan: r.waechterPlan, w: r.waechter, cron: m.state.cron }));
     const upd = m.world.jobs.filter((j) => j.calls.some((c) => c.method === 'Shelly.Update' && c.params.stage === 'stable'));

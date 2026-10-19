@@ -29,7 +29,7 @@
   ok   S03: kein Absturz
   ok   S03: Statustext <= 255 Byte
   ok   S03: Grenzen (Timer<=5, RPC<=5, Handler<=5)
-  -- S03_regenprognose (2.9 s)
+  -- S03_regenprognose (3.0 s)
   ok   S04 Handgabe: Timer gesetzt (6 mm)
   ok   S04 Handgabe lief so lange wie 6 mm und endete
   ok   S04 Stopp per Taster nach 20 min
@@ -37,7 +37,7 @@
   ok   S04: kein Absturz
   ok   S04: Statustext <= 255 Byte
   ok   S04: Grenzen (Timer<=5, RPC<=5, Handler<=5)
-  -- S04_taster (0.4 s)
+  -- S04_taster (0.3 s)
   ok   S05 Automatiklauf gestartet
   ok   S05 Trockenlauf in < 20 s abgeschaltet
   ok   S05 Nachlauf geplant
@@ -53,7 +53,7 @@
   ok   S06: kein Absturz
   ok   S06: Statustext <= 255 Byte
   ok   S06: Grenzen (Timer<=5, RPC<=5, Handler<=5)
-  -- S06_luftgemisch (0.1 s)
+  -- S06_luftgemisch (0.2 s)
   ok   S07 zugedrehter Hahn nach Anlaufzeit erkannt (<= 60 s)
   ok   S07: kein Absturz
   ok   S07: Statustext <= 255 Byte
@@ -91,7 +91,7 @@
   ok   S11: kein Absturz
   ok   S11: Statustext <= 255 Byte
   ok   S11: Grenzen (Timer<=5, RPC<=5, Handler<=5)
-  -- S11_stromausfall_ohne_internet (2.6 s)
+  -- S11_stromausfall_ohne_internet (2.4 s)
   ok   S12 Lauf aktiv vor Ausfall
   ok   S12 nach Ausfall kein Wiederanlauf am selben Tag
   ok   S12 Teilmenge gutgeschrieben (Stand nach 1 h)
@@ -104,7 +104,7 @@
   ok   S13: kein Absturz
   ok   S13: Statustext <= 255 Byte
   ok   S13: Grenzen (Timer<=5, RPC<=5, Handler<=5)
-  -- S13_internet_3_tage_weg (4.0 s)
+  -- S13_internet_3_tage_weg (3.6 s)
   ok   S14 März: Prüfung immer 10:00-10:01 Ortszeit
   ok   S14 Oktober: Prüfung immer 10:00-10:01 Ortszeit
   ok   S14: kein Absturz
@@ -113,7 +113,7 @@
   ok   S14b: kein Absturz
   ok   S14b: Statustext <= 255 Byte
   ok   S14b: Grenzen (Timer<=5, RPC<=5, Handler<=5)
-  -- S14_zeitumstellung (6.8 s)
+  -- S14_zeitumstellung (6.7 s)
   ok   S15 Februar: keine Automatik
   ok   S15 Status Winterpause
   ok   S15 März: Automatik läuft wieder (Konto ab 0)
@@ -153,12 +153,12 @@
   ok   S18: kein Absturz
   ok   S18: Statustext <= 255 Byte
   ok   S18: Grenzen (Timer<=5, RPC<=5, Handler<=5)
-  -- S18_automatik_aus (0.6 s)
+  -- S18_automatik_aus (0.7 s)
   ok   S19 9 mm bei 9 mm/h = 60 min
   ok   S19: kein Absturz
   ok   S19: Statustext <= 255 Byte
   ok   S19: Grenzen (Timer<=5, RPC<=5, Handler<=5)
-  -- S19_regenrate (0.1 s)
+  -- S19_regenrate (0.2 s)
   ok   S20 Normalleistung zurückgesetzt
   ok   S20 neu gelernt ~1320 W
   ok   S20: kein Absturz
@@ -181,7 +181,7 @@
   ok   S22: kein Absturz
   ok   S22: Statustext <= 255 Byte
   ok   S22: Grenzen (Timer<=5, RPC<=5, Handler<=5)
-  -- S22_erststart_ohne_internet (5.0 s)
+  -- S22_erststart_ohne_internet (5.1 s)
   ok   S23 Lauf übernommen, Timer nicht verlängert
   ok   S23: kein Absturz
   ok   S23: Statustext <= 255 Byte
@@ -225,7 +225,7 @@
   ok   S27: kein Absturz
   ok   S27: Statustext <= 255 Byte
   ok   S27: Grenzen (Timer<=5, RPC<=5, Handler<=5)
-  -- S27_taster_mehrfach_und_stopp_vom_pc (6.3 s)
+  -- S27_taster_mehrfach_und_stopp_vom_pc (6.0 s)
   ok   S28 LED grün, volle Helligkeit, wenn alles gut
   ok   S28 LED blau, solange die Pumpe läuft
   ok   S28 LED violett nach Störung
@@ -237,7 +237,7 @@
   ok   S28: kein Absturz
   ok   S28: Statustext <= 255 Byte
   ok   S28: Grenzen (Timer<=5, RPC<=5, Handler<=5)
-  -- S28_led (2.1 s)
+  -- S28_led (1.8 s)
   ok   S29 Wächter-Zeitplan angelegt
   ok   S29 Firmware-Update angelegt: täglich 03:23, neueste stabile
   ok   S29 Neustart legt keine weiteren an
@@ -263,7 +263,7 @@
   ok   S30c: kein Absturz
   ok   S30c: Statustext <= 255 Byte
   ok   S30c: Grenzen (Timer<=5, RPC<=5, Handler<=5)
-  -- S30_regen_angekuendigt_nicht_gekommen (1.0 s)
+  -- S30_regen_angekuendigt_nicht_gekommen (1.1 s)
   ok   S31 ohne Wetterdienst jede Woche gegossen (8 Wochen)
   ok   S31 gegossene Menge passt zur geschätzten Verdunstung (±25 %)
   ok   S31 Status ohne Internet
@@ -273,7 +273,7 @@
   ok   S31: kein Absturz
   ok   S31: Statustext <= 255 Byte
   ok   S31: Grenzen (Timer<=5, RPC<=5, Handler<=5)
-  -- S31_wochenlang_ohne_wetterdienst (31.8 s)
+  -- S31_wochenlang_ohne_wetterdienst (31.4 s)
   ok   S32 Eigenwärme gelernt (Tief ~25 K, Hoch ~25 K)
   ok   S32 Frostnacht ohne Internet (1 °C, Gerät ~26 °C): vormittags kein Lauf
   ok   S32 ohne Internet: gegossen, sobald der Gerätefühler 5 °C Luft zeigt (12:05)
@@ -281,7 +281,7 @@
   ok   S32: kein Absturz
   ok   S32: Statustext <= 255 Byte
   ok   S32: Grenzen (Timer<=5, RPC<=5, Handler<=5)
-  -- S32_frost_ohne_internet_eigenwaerme (3.4 s)
+  -- S32_frost_ohne_internet_eigenwaerme (3.6 s)
   ok   S33 Hitzetag ohne Internet: mehr verbucht als das Monatsmittel
   ok   S33 kühler Tag ohne Internet: weniger verbucht
   ok   S33: kein Absturz
@@ -299,7 +299,7 @@
   ok   S34b: kein Absturz
   ok   S34b: Statustext <= 255 Byte
   ok   S34b: Grenzen (Timer<=5, RPC<=5, Handler<=5)
-  -- S34_uhr_nach_tagesgang (5.7 s)
+  -- S34_uhr_nach_tagesgang (6.0 s)
   ok   S35 Prüfung nach der Handgabe: Rest sofort gegossen
   ok   S35: kein Absturz
   ok   S35: Statustext <= 255 Byte
@@ -319,7 +319,7 @@
   ok   S37: kein Absturz
   ok   S37: Statustext <= 255 Byte
   ok   S37: Grenzen (Timer<=5, RPC<=5, Handler<=5)
-  -- S37_skript_neustart_bei_geschaetzter_uhr (4.4 s)
+  -- S37_skript_neustart_bei_geschaetzter_uhr (4.2 s)
   ok   S38 Zeitserver gesperrt: Uhr binnen 20 min aus dem Wetterdienst gestellt
   ok   S38 danach um 10:00 gegossen
   ok   S38b genaue Schätzung: vom Wetterdienst bestätigt
@@ -346,7 +346,7 @@
   ok   S38f: kein Absturz
   ok   S38f: Statustext <= 255 Byte
   ok   S38f: Grenzen (Timer<=5, RPC<=5, Handler<=5)
-  -- S38_internet_ohne_zeitserver (12.8 s)
+  -- S38_internet_ohne_zeitserver (13.4 s)
   ok   S39 Deckel statt Prognose: Folgetag zählt die Regenprognose
   ok   S39b nach Absage bei der Nachprüfung: Folgetag zählt die Regenprognose
   ok   S39c Abruf bis nach 12:30: kein Start mehr
@@ -369,9 +369,9 @@
   ok   S41 Wetter für den Ort, Zeitzone des Ortes
   ok   S41 nach Neustart keine neue Ortsabfrage
   ok   S41b Umlaut im Ortsnamen
-  ok   S41c unbekannter Ort: gegossen wie ohne Internet
-  ok   S41c Selbsttest meldet den Ort
-  ok   S41d Koordinaten eingetragen: keine Ortsabfrage
+  ok   S41c unbekannter Ortsname: Ort per IP, gegossen mit Wetterdaten
+  ok   S41c Status und LED: Ort nicht gefunden
+  ok   S41d Koordinaten eingetragen: weder Ortssuche noch IP-Ortung, kein Hinweis, LED grün
   ok   S41: kein Absturz
   ok   S41: Statustext <= 255 Byte
   ok   S41: Grenzen (Timer<=5, RPC<=5, Handler<=5)
@@ -401,7 +401,7 @@
   ok   S43b: kein Absturz
   ok   S43b: Statustext <= 255 Byte
   ok   S43b: Grenzen (Timer<=5, RPC<=5, Handler<=5)
-  -- S43_anlauf_und_wiedereinschalten (1.7 s)
+  -- S43_anlauf_und_wiedereinschalten (1.6 s)
   ok   S44 Korrektur nach Ausfall am Deckel stimmt
   ok   S44b nach Gabe am Deckel: Folgetag 13,8 mm
   ok   S44: kein Absturz
@@ -410,7 +410,7 @@
   ok   S44b: kein Absturz
   ok   S44b: Statustext <= 255 Byte
   ok   S44b: Grenzen (Timer<=5, RPC<=5, Handler<=5)
-  -- S44_konto_am_deckel (5.2 s)
+  -- S44_konto_am_deckel (5.3 s)
   ok   S45 ohne Rückruf: am selben Tag ohne Internet entschieden und gegossen
   ok   S45 vier Abrufe, nicht Dauerfeuer
   ok   S45b Nachprüfung nach Neustart: um 11:05 gegossen
@@ -448,12 +448,12 @@
   ok   S48b: kein Absturz
   ok   S48b: Statustext <= 255 Byte
   ok   S48b: Grenzen (Timer<=5, RPC<=5, Handler<=5)
-  -- S48_korrektur_nach_regen (5.2 s)
+  -- S48_korrektur_nach_regen (5.5 s)
   ok   S49 ungelernt, Frostnacht ohne Internet: kein Lauf in der Kälte
   ok   S49: kein Absturz
   ok   S49: Statustext <= 255 Byte
   ok   S49: Grenzen (Timer<=5, RPC<=5, Handler<=5)
-  -- S49_frost_eigenwaerme_ungelernt (0.6 s)
+  -- S49_frost_eigenwaerme_ungelernt (0.7 s)
   ok   S50 Frost, Neustart, Abruf scheitert: Gerätefühler entscheidet, um 12:05 gegossen
   ok   S50b Frost, dann Regen, dann Absage: Texte passen
   ok   S50c Regen, dann abgesagt: „Regen abgesagt“
@@ -466,13 +466,13 @@
   ok   S50c: kein Absturz
   ok   S50c: Statustext <= 255 Byte
   ok   S50c: Grenzen (Timer<=5, RPC<=5, Handler<=5)
-  -- S50_nachpruefung_gruende (1.0 s)
+  -- S50_nachpruefung_gruende (1.1 s)
   ok   S51 nach Störung violett
-  ok   S51 Fehler beim Zurückstellen: binnen 2 h doch grün
+  ok   S51 Fehler beim Zurückstellen nach dem nächsten fehlerfreien Lauf: binnen 2 h doch grün
   ok   S51: kein Absturz
   ok   S51: Statustext <= 255 Byte
   ok   S51: Grenzen (Timer<=5, RPC<=5, Handler<=5)
-  -- S51_led_nach_fehler (0.8 s)
+  -- S51_led_nach_fehler (0.7 s)
   ok   S52 Fehler in der Wetterantwort: Skript läuft, 20 min später gegossen
   ok   S52 Konto nicht doppelt verbucht, volle Gabe 14 mm, keine Störung
   ok   S52b Fehler beim Anlegen des Wächters: Skript läuft weiter
@@ -494,7 +494,106 @@
   ok   S53: kein Absturz
   ok   S53: Statustext <= 255 Byte
   ok   S53: Grenzen (Timer<=5, RPC<=5, Handler<=5)
-  -- S53_bedienfeld_spaet (1.9 s)
+  -- S53_bedienfeld_spaet (1.8 s)
+  ok   S54 ORT auto: Ort per IP gespeichert, Wetter dafür, keine Ortssuche
+  ok   S54 ORT auto: kein Hinweis, LED grün
+  ok   S54b Name weit von der IP-Ortung: Name gilt, „Ort prüfen“, LED gelb
+  ok   S54c IP-Ortung gestört: Ort aus dem Namen, kein Hinweis, LED grün
+  ok   S54d ORT auto, IP nur auf das Land genau: Hinweis, LED gelb
+  ok   S54e ORT auto, IP erst gestört: Ort unbekannt, dann gefunden
+  ok   S54: kein Absturz
+  ok   S54: Statustext <= 255 Byte
+  ok   S54: Grenzen (Timer<=5, RPC<=5, Handler<=5)
+  ok   S54b: kein Absturz
+  ok   S54b: Statustext <= 255 Byte
+  ok   S54b: Grenzen (Timer<=5, RPC<=5, Handler<=5)
+  ok   S54c: kein Absturz
+  ok   S54c: Statustext <= 255 Byte
+  ok   S54c: Grenzen (Timer<=5, RPC<=5, Handler<=5)
+  ok   S54d: kein Absturz
+  ok   S54d: Statustext <= 255 Byte
+  ok   S54d: Grenzen (Timer<=5, RPC<=5, Handler<=5)
+  ok   S54e: kein Absturz
+  ok   S54e: Statustext <= 255 Byte
+  ok   S54e: Grenzen (Timer<=5, RPC<=5, Handler<=5)
+  -- S54_ort_per_ip (0.3 s)
+  ok   S55 Trockenlauf: LED violett
+  ok   S55 nach Neustart und Mitternacht: weiter violett, Status nennt die Störung
+  ok   S55 nächster Lauf fehlerfrei: LED grün, Störung erledigt
+  ok   S55: kein Absturz
+  ok   S55: Statustext <= 255 Byte
+  ok   S55: Grenzen (Timer<=5, RPC<=5, Handler<=5)
+  -- S55_led_letzte_stoerung (0.8 s)
+  ok   S56 Speicher: höchstens 1 je Minute, nach 48 im Tagesfenster 1 je Stunde
+  ok   S56 nach dem Sturm: letzter Stand geschrieben
+  ok   S56b Einstellungen: höchstens 30 Schreibversuche am Tag, Bremse gemeldet
+  ok   S56c Absturzschleife: höchstens 48 + 24 Schreibvorgänge am Tag
+  ok   S56: kein Absturz
+  ok   S56: Statustext <= 255 Byte
+  ok   S56: Grenzen (Timer<=5, RPC<=5, Handler<=5)
+  ok   S56b: kein Absturz
+  ok   S56b: Statustext <= 255 Byte
+  ok   S56b: Grenzen (Timer<=5, RPC<=5, Handler<=5)
+  ok   S56c: kein Absturz
+  ok   S56c: Statustext <= 255 Byte
+  ok   S56c: Grenzen (Timer<=5, RPC<=5, Handler<=5)
+  -- S56_schreibbremse (2.5 s)
+  ok   S57 Uhr aus der IP-Ortung, keine Annahme 15. April
+  ok   S57: kein Absturz
+  ok   S57: Statustext <= 255 Byte
+  ok   S57: Grenzen (Timer<=5, RPC<=5, Handler<=5)
+  -- S57_uhr_ohne_ort (0.0 s)
+  ok   S58 abgelehnt: Störung in der Statuszeile, neue Versuche bis 12:30, LED violett
+  ok   S58 bis 12:30 abgelehnt: kein Lauf, nächster Versuch morgen, je Minute höchstens 2 Versuche
+  ok   S58 am Folgetag gegossen: LED grün, Störung erledigt
+  ok   S58: kein Absturz
+  ok   S58: Statustext <= 255 Byte
+  ok   S58: Grenzen (Timer<=5, RPC<=5, Handler<=5)
+  -- S58_einschalten_abgelehnt (0.8 s)
+  ok   S59 Uhr gestellt, während der Wetterabruf läuft: Tage richtig verschoben, kein Lauf am ersten Tag
+  ok   S59b Absturzschleife ohne Internet: je Tag eine Gabe, Tagesprüfung gespeichert
+  ok   S59: kein Absturz
+  ok   S59: Statustext <= 255 Byte
+  ok   S59: Grenzen (Timer<=5, RPC<=5, Handler<=5)
+  ok   S59b: kein Absturz
+  ok   S59b: Statustext <= 255 Byte
+  ok   S59b: Grenzen (Timer<=5, RPC<=5, Handler<=5)
+  -- S59_pruefer_uhr_und_speicher (1.6 s)
+  ok   S60 Bremse für das Bedienfeld erschöpft: LED trotzdem violett, Notabschaltung binnen 1 h zurück
+  ok   S60: kein Absturz
+  ok   S60: Statustext <= 255 Byte
+  ok   S60: Grenzen (Timer<=5, RPC<=5, Handler<=5)
+  -- S60_pruefer_einstellungen (0.2 s)
+  ok   S61 ORT auto: genauere IP-Ortung ersetzt die ungenaue, Wetter dafür, LED grün
+  ok   S61b LAT/LON nach „nicht gefunden“: Hinweis weg, LED grün, keine Abfrage
+  ok   S61c Name einmal nicht gefunden: am nächsten Tag gilt wieder der Name
+  ok   S61d Name nicht gefunden, IP-Ortung gestört: Status nennt den Namen
+  ok   S61e Stadtname mit Umlauten: als ASCII
+  ok   S61: kein Absturz
+  ok   S61: Statustext <= 255 Byte
+  ok   S61: Grenzen (Timer<=5, RPC<=5, Handler<=5)
+  ok   S61b: kein Absturz
+  ok   S61b: Statustext <= 255 Byte
+  ok   S61b: Grenzen (Timer<=5, RPC<=5, Handler<=5)
+  ok   S61c: kein Absturz
+  ok   S61c: Statustext <= 255 Byte
+  ok   S61c: Grenzen (Timer<=5, RPC<=5, Handler<=5)
+  ok   S61d: kein Absturz
+  ok   S61d: Statustext <= 255 Byte
+  ok   S61d: Grenzen (Timer<=5, RPC<=5, Handler<=5)
+  ok   S61e: kein Absturz
+  ok   S61e: Statustext <= 255 Byte
+  ok   S61e: Grenzen (Timer<=5, RPC<=5, Handler<=5)
+  -- S61_pruefer_ort (2.3 s)
+  ok   S62 Einschalten am Folgetag wieder abgelehnt: Störung neu datiert
+  ok   S62b WLAN erst nach dem Hochfahren: nach 4 min kein „ohne Internet“, keine LED-Schreibvorgänge
+  ok   S62: kein Absturz
+  ok   S62: Statustext <= 255 Byte
+  ok   S62: Grenzen (Timer<=5, RPC<=5, Handler<=5)
+  ok   S62b: kein Absturz
+  ok   S62b: Statustext <= 255 Byte
+  ok   S62b: Grenzen (Timer<=5, RPC<=5, Handler<=5)
+  -- S62_pruefer_rest (0.9 s)
   ok   S25 Schreibvorgänge im Mittel <= 6/Tag
   ok   S25 Schreibvorgänge an einem Tag <= 12
   ok   S25 Bodenkonto (unabhängig gerechnet) nie über 20 mm
@@ -503,13 +602,13 @@
   ok   S25: kein Absturz
   ok   S25: Statustext <= 255 Byte
   ok   S25: Grenzen (Timer<=5, RPC<=5, Handler<=5)
-  -- S25_saison_langlauf (135.8 s)
+  -- S25_saison_langlauf (141.0 s)
 
 Details: {
  "S01_inbetriebnahme": {},
  "S02_sommerwoche": {
   "runs": "2027-06-04 10:00 80.0min (loopback->timer); 2027-06-07 10:00 80.0min (loopback->timer); 2027-06-10 10:00 80.0min (loopback->timer)",
-  "writesPerDay": "5.4",
+  "writesPerDay": "5.1",
   "status": "Heute: nicht nötig (3,8 mm) · Zuletzt 10.06. 10:00 Automatik 11,5 mm · Pumpe normal 1321 W"
  },
  "S03_regenprognose": {
@@ -594,9 +693,18 @@ Details: {
  "S51_led_nach_fehler": {},
  "S52_fehler_im_rueckruf": {},
  "S53_bedienfeld_spaet": {},
+ "S54_ort_per_ip": {},
+ "S55_led_letzte_stoerung": {},
+ "S56_schreibbremse": {},
+ "S57_uhr_ohne_ort": {},
+ "S58_einschalten_abgelehnt": {},
+ "S59_pruefer_uhr_und_speicher": {},
+ "S60_pruefer_einstellungen": {},
+ "S61_pruefer_ort": {},
+ "S62_pruefer_rest": {},
  "S25_saison_langlauf": {
   "days": "275",
-  "writesPerDay": "5.1",
+  "writesPerDay": "4.7",
   "maxDay": 7,
   "starts": 30,
   "mm": "281",
@@ -605,7 +713,7 @@ Details: {
   "maxDeficit": "10.9"
  }
 }
-Längster Statustext: 165 Byte
+Längster Statustext: 166 Byte
 
-453 bestanden, 0 fehlgeschlagen  [bewaesserung.min.js]
+543 bestanden, 0 fehlgeschlagen  [bewaesserung.min.js]
 exit 0

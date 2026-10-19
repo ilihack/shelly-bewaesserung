@@ -98,7 +98,8 @@ var Shelly = {
     else if (method === 'Virtual.Add') { __W.vc[p.type + ':' + p.id] = { config: p.config, value: p.type === 'group' ? [] : p.config.default_value }; __W.cfgWrites++; res = { id: p.id }; }
     else if (method === 'Group.Set') { __W.vc['group:' + p.id].value = p.value; __W.cfgWrites++; }
     else if (method === 'HTTP.GET') { lat = 400; res = { code: 200, body: p.url.indexOf('geocoding') > 0 ?
-      '{"results":[{"name":"Ludwigshafen am Rhein","latitude":49.48121,"longitude":8.44641}]}' : __wx(p.url) }; }
+      '{"results":[{"name":"Ludwigshafen am Rhein","latitude":49.48121,"longitude":8.44641}]}' :
+      p.url.indexOf('geojs.io') > 0 ? '{"latitude":"49.4874","longitude":"8.4660","accuracy":20,"city":"Mannheim"}' : __wx(p.url) }; }
     else if (method === 'Sys.SetTime') { }
     else if (method === 'Schedule.List') { res = { jobs: JSON.parse(JSON.stringify(__W.jobs)), rev: __W.jobs.length }; }
     else if (method === 'Schedule.Create') { p.id = __W.jobs.length + 1; __W.jobs.push(p); __W.cfgWrites++; res = { id: p.id }; }

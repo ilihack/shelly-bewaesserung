@@ -85,7 +85,7 @@ function startMock(done, opt) {
     'WiFi.SetConfig': (p) => { if (p.config.ap) st.ap = p.config.ap.enable; return { restart_required: false }; },
     'WiFi.GetStatus': () => (opt.ohneWlan ? { sta_ip: null, status: 'disconnected', ap_client_count: 1 } : { sta_ip: '192.168.178.57', status: 'got ip' }),
     'BLE.GetConfig': () => ({ enable: true, rpc: { enable: false } }),
-    'HTTP.GET': (p) => ({ code: 200, body: w.weatherBody(p.url) })
+    'HTTP.GET': (p) => ({ code: 200, body: p.url.indexOf('geojs.io') > 0 ? w.ipBody() : w.weatherBody(p.url) })
   };
   function authOk(f) {                       // Firmware 2.x: ha2 = SHA256("POST:/rpc"), nc je nonce streng steigend
     const a = f.auth, n = a && st.nonces[a.nonce];

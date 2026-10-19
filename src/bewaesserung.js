@@ -21,10 +21,12 @@
 // ============================== Einstellungen ==============================
 var C = {
   // Ort und Zeit
-  ORT: "Ludwigshafen am Rhein", LAND: "DE", // Koordinaten holt das Skript einmal von Open-Meteo und speichert sie;
+  ORT: "Ludwigshafen am Rhein", LAND: "DE", // Ortsname oder "auto" (Ort über die IP-Adresse). Koordinaten holt das
+                                 // Skript einmal und speichert sie; eine IP-Ortung prüft täglich, ob der Ort passt.
                                  // Schreibweise prüfen, der erste Treffer zählt:
                                  // https://geocoding-api.open-meteo.com/v1/search?countryCode=DE&language=de&name=Ludwigshafen
-  LAT: null, LON: null,          // oder direkt eintragen (z. B. 49.48, 8.45), dann ohne Abfrage
+  LAT: null, LON: null,          // oder direkt eintragen (z. B. 49.48, 8.45), dann ohne Ortssuche und IP-Ortung
+  LOC_KM: 100,                   // Ort weiter als max(LOC_KM, 2 × Ungenauigkeit) von der IP-Ortung: „Ort prüfen“
   UTC_H: 1,                      // Normalzeit gegen UTC (Deutschland 1); Sommerzeit nach EU-Regel
 
   // Wann gegossen wird
@@ -78,6 +80,9 @@ var C = {
   CLOCK_S: 5400,                 // geschätzte Uhr am Tagesgang erst ab 1,5 h Abweichung stellen [5]
   CLOCK_LATE_S: 3600,            // dabei 1 h hinter den errechneten Wert: in 95 % der Fälle nicht zu früh [5]
   ANCHOR_S: 21600,               // Zeitanker alle 6 h speichern: 4 Schreibvorgänge am Tag [5]
+  WRITES_DAY: 48,                // Schreibbremse Speicher: höchstens 1 je Minute, nach 48 in 24 h 1 je Stunde [5]
+  CFG_DAY: 30,                   // Schreibbremse Bedienfeld und Zeitpläne: höchstens 30 in 24 h; LED hat eigene 12 am Tag,
+                                 // die Relais-Sicherungen bremst nichts (höchstens stündlich, nur wenn verstellt) [5]
   RUN_SAVE_S: 3600,              // laufende Gabe stündlich gutschreiben
   T_MIN: 1767225600              // frühere Uhrzeiten sind ungültig (vor 2026)
 };
@@ -87,11 +92,13 @@ var C = {
 var ET0_CLIM = [0.6, 0.9, 1.6, 2.6, 3.5, 4.5, 4.4, 3.8, 2.4, 1.1, 0.5, 0.5];   // Grasreferenzverdunstung (mm/Tag)
 var TMAX_CLIM = [6.1, 9.3, 13.0, 17.0, 21.1, 26.3, 27.4, 27.4, 22.8, 16.7, 9.6, 6.8]; // Tageshöchstwert (°C)
 
-// LED des Steckers (Farben 0..100, volle Helligkeit, auch in der Sonne zu sehen): grün = alles gut, gelb = ohne
-// Internet / Uhr geschätzt, violett = Störung heute, blau = Pumpe läuft. Rot belegt die Firmware (WLAN weg, Update),
-// Blau blinkend den AP.
+// LED des Steckers (Farben 0..100, volle Helligkeit, auch in der Sonne zu sehen): grün = alles gut, gelb = Daten
+// fehlen (Wetterdienst, Uhr, Ort, Speicher), violett = der letzte Lauf hatte eine Störung (bleibt, bis ein Lauf wieder
+// fehlerfrei war, auch über Neustarts), blau = Pumpe läuft. Rot belegt die Firmware (WLAN weg, Update), Blau blinkend den AP.
 // Jede Änderung ist ein Flash-Schreibvorgang: nur bei Zustandswechsel, nach 2 min Bestand, höchstens 12 am Tag [3]
 var LED = { ok: [0, 100, 0], warn: [100, 70, 0], err: [100, 0, 100], run: [0, 0, 100] };
+// IP-Ortung (MaxMind GeoLite über GeoJS): https, ohne Schlüssel; für ORT "auto" und die tägliche Ortsprüfung [2]
+var IP_URL = "https://get.geojs.io/v1/ip/geo.json";
 
 // ============================== Zustand ==============================
 // S wird gespeichert (Script.storage, ein Eintrag), R lebt nur im RAM.
@@ -108,9 +115,12 @@ var R = {
   wc: 0, weld: false,// Relais-Prüfung bei AUS
   wx: { busy: false, next: 0, tries: 0, L: null, n: 0, rc: false, t: 0, q: 0, cg: 0 },  // Wetterabruf: läuft seit t, Nummer q
   off: false,        // letzte Wetterabfrage gescheitert
+  pf: false, pk: false, // letzter Verbindungstest gescheitert; seit dem Start schon einer gelaufen
+  lw: "", ia: 60,    // Hinweis der Ortsprüfung; nächste IP-Ortung (Uptime)
+  sv: -1e9, sd: false, wn: 0, w24: 0, // Schreibbremse Speicher: letztes Schreiben, noch zu schreiben, Anzahl, Fensterbeginn
+  cn: 0, c24: 0,     // Schreibbremse Bedienfeld und Zeitpläne: Anzahl, Fensterbeginn
   why: "",           // Ergebnis der heutigen Prüfung
   note: "", noteU: 0,// Hinweis (Einlernen usw.), verschwindet nach 12 h
-  fault: null,       // letzte Störung {c, txt, u}
   noStore: false,
   h: null,           // Bedienfeld-Handles
   paShown: -1, lastTxt: "", lastD: -1,
@@ -235,15 +245,40 @@ function load() {
   if (typeof v.tu !== "number") v.tu = 0;   // Laufzeit des Geräts beim Zeitanker (s): Skript-Neustart erkennen
   if (typeof v.ce !== "number") v.ce = 0;   // 1 = Geräteuhr vom Skript geschätzt, Zeitserver hat sie seither nicht gestellt
   if (typeof v.cs !== "number") v.cs = 0;   // zuletzt vom Skript gestellte Uhrzeit, vom Zeitserver zu unterscheiden
-  if (v.pz !== C.LAND + C.ORT || typeof v.la !== "number" || typeof v.lo !== "number") { v.la = null; v.lo = null; v.pz = ""; }   // Ort
+  if (typeof v.fu !== "number") v.fu = 0;   // letzte Störung (Unixzeit, 1 = Zeit unbekannt), bis ein Lauf fehlerfrei war
+  if (typeof v.ft !== "string") v.ft = "";  // ihr Text
+  if (typeof v.lf !== "number") v.lf = 0;   // 1 = Ortsname nicht gefunden, Ort per IP
+  if (typeof v.lc !== "string") v.lc = "";  // Ort laut IP-Ortung, für die Anzeige
+  if (typeof v.lq !== "number") v.lq = 999; // seine Ungenauigkeit (km)
+  if (typeof v.wu !== "number") v.wu = 0;   // Schreibbremse über Skript-Neustarts: Laufzeit beim letzten Schreiben (s),
+  if (typeof v.wn !== "number") v.wn = 0;   // Anzahl im Fenster
+  if (typeof v.wb !== "number") v.wb = 0;   // und Fensterbeginn (Laufzeit, s)
+  if (v.pz !== C.LAND + C.ORT || typeof v.la !== "number" || typeof v.lo !== "number") {   // Ort neu bestimmen
+    v.la = null; v.lo = null; v.pz = ""; v.lf = 0; v.lc = ""; v.lq = 999;
+  }
   S = v;
 }
-function save() {
-  var u = nowU();
-  if (u) { S.t = Math.floor(u); S.tu = Math.floor(upS()); }
+function save() { R.sd = true; flush(); }   // gleich schreiben oder, von der Schreibbremse gehalten, im Takt
+function flush() {                        // Schreibbremse: höchstens 1 je Minute, nach WRITES_DAY in 24 h 1 je Stunde;
+  var now = upS(), u;                     // fängt auch einen Fehler ab, der save() in Schleife riefe [5]
+  if (!R.sd) return;
+  if (now - R.w24 >= 86400) { R.w24 = now; R.wn = 0; }
+  if (now - R.sv < (R.wn >= C.WRITES_DAY ? 3600 : 60)) return;
+  u = nowU();
+  if (u) { S.t = Math.floor(u); S.tu = Math.floor(now); }
   S.d = r2(S.d); S.pi = r2(S.pi);
-  try { Script.storage.setItem("s", JSON.stringify(S)); R.noStore = false; }
+  S.wu = Math.floor(now); S.wn = R.wn + 1; S.wb = Math.floor(R.w24);   // gilt so auch nach einem Skript-Neustart
+  try { Script.storage.setItem("s", JSON.stringify(S)); R.noStore = false; R.sd = false; }
   catch (e) { R.noStore = true; }
+  R.sv = now; R.wn++;                     // auch ein Fehlversuch zählt: kein Dauerversuch
+}
+function cfgCall(m, p, f) {               // Bedienfeld und Zeitpläne schreiben (Flash): höchstens CFG_DAY in 24 h; false = gebremst
+  var now = upS();
+  if (now - R.c24 >= 86400) { R.c24 = now; R.cn = 0; }
+  if (R.cn >= C.CFG_DAY) { if (R.cn++ === C.CFG_DAY) log("Schreibbremse Einstellungen: " + m); return false; }
+  Shelly.call(m, p, cbSafe, f);
+  R.cn++;
+  return true;
 }
 
 // ============================== Bedienfeld (Virtual Components) ==============================
@@ -266,12 +301,12 @@ function vcNext() {
   if (vcI < VC.length) {
     var s = VC[vcI];
     if (Shelly.getComponentConfig(s[0], s[1])) { vcI++; vcNext(); return; }
-    Shelly.call("Virtual.Add", { type: s[0], id: s[1], config: s[3] }, cbSafe, vcAdded);
+    cfgCall("Virtual.Add", { type: s[0], id: s[1], config: s[3] }, vcAdded);
     return;
   }
   if (!Shelly.getComponentConfig("group", 200)) {
-    Shelly.call("Virtual.Add", { type: "group", id: 200,
-      config: { name: "Bewässerung", meta: { ui: { view: "group" } } } }, cbSafe, vcGroupAdded);
+    cfgCall("Virtual.Add", { type: "group", id: 200,
+      config: { name: "Bewässerung", meta: { ui: { view: "group" } } } }, vcGroupAdded);
     return;
   }
   vcGroupAdded(null, 0, "");
@@ -285,7 +320,7 @@ function vcGroupAdded(res, err, msg) {
   var want = [], i, g = Shelly.getComponentStatus("group", 200);
   for (i = 0; i < VC.length; i++) want.push(VC[i][0] + ":" + VC[i][1]);
   if (!g || JSON.stringify(g.value) !== JSON.stringify(want)) {
-    Shelly.call("Group.Set", { id: 200, value: want }, cbNone);
+    cfgCall("Group.Set", { id: 200, value: want }, cbNone);
   }
   vcBind();
 }
@@ -431,12 +466,13 @@ function onClockSet(res, err, msg) {      // Schätzung erst nachziehen, wenn di
   R.eb += R.zl; R.zn = 1; R.cg++; save();
   log("Uhr nach Tagesgang um " + f1(R.zl / 3600) + " h gestellt");
 }
-// Zeitserver gesperrt, Internet da: Jede Antwort von Open-Meteo trägt die Uhrzeit im Kopf (Date, auf die Sekunde,
-// über https unverfälscht). Weicht die geschätzte Uhr mehr als 60 s ab, stellt das Skript die Geräteuhr; erst wenn
-// das geklappt hat, gilt die Uhr als echt (clockReal). Rückgabe true: Uhr wird gestellt, diese Antwort nicht verwenden.
+// Zweiter Weg zur Uhrzeit neben dem Zeitserver: Jede https-Antwort (Wetterdienst, Ortssuche, IP-Ortung) trägt die
+// Uhrzeit im Kopf (Date, auf die Sekunde). Ist die Uhr geschätzt oder ganz unbekannt und weicht mehr als 60 s ab,
+// stellt das Skript die Geräteuhr; erst wenn das geklappt hat, gilt die Uhr als echt (clockReal).
+// Rückgabe true: Uhr wird gestellt, eine Wetterantwort von davor nicht verwenden.
 function httpClock(res) {
-  var h = res && res.headers, s = null, k, p, m, c, t, u, now = upS();
-  if (!R.est || !h) return false;
+  var h = res && res.headers, s = null, k, p, m, c, t, u = nowU(), now = upS();
+  if (!(R.est || !u) || !h) return false;
   if (R.hp && now - R.hp < 60) return true;                        // Stellen läuft noch
   if ((R.cp && now - R.cp < 60) || now < R.hc) return false;     // Tagesgang stellt gerade; nach Fehlschlag Pause
   for (k in h) if (String(k).toLowerCase() === "date") s = h[k];   // Schreibweise je nach Server
@@ -447,18 +483,18 @@ function httpClock(res) {
   if (m < 0 || m % 3 || c.length !== 3) return false;
   t = dfc(+p[3], m / 3 + 1, +p[1]) * 86400 + c[0] * 3600 + c[1] * 60 + +c[2];
   if (!(t > C.T_MIN)) return false;
-  u = nowU();
-  if (u && Math.abs(t - u) <= 60) { clockReal(u, u); log("Uhr vom Wetterdienst bestätigt"); return false; }
+  if (u && Math.abs(t - u) <= 60) { clockReal(u, u); log("Uhr von Internet-Antwort bestätigt"); return false; }
   Shelly.call("Sys.SetTime", { unixtime: t }, cbSafe, onHttpClock);   // wirft der Aufruf, bleibt alles beim Alten
-  R.hp = now; R.ht = t - now;
+  R.hp = now; R.ht = t - now; R.cg++;     // ein laufender Wetterabruf gilt nicht mehr
   return true;
 }
 function onHttpClock(res, err, msg) {
   var now = upS(), t = R.ht + now;
   R.hp = 0;
-  if (err) { R.hc = now + 900; log("Uhr nicht stellbar: " + msg); return; }   // die Uhr bleibt geschätzt
+  if (err) { R.hc = now + 900; log("Uhr nicht stellbar: " + msg); return; }   // die Uhr bleibt, wie sie war
   if (R.est) { S.cs = Math.floor(t); clockReal(t, R.eb + now - R.eu); }      // schon von schedule() erkannt: fertig
-  log("Uhr aus dem Wetterdienst gestellt");
+  else if (!R.eb) { S.cs = Math.floor(t); R.defAt = 0; clockReal(t, t); }   // Uhr war noch ganz unbekannt
+  log("Uhr aus Internet-Antwort gestellt");
 }
 function clockReal(t, old) {              // die Uhr gilt ab jetzt als echt (Zeitserver oder Wetterdienst)
   if (R.def && old) shiftDays(loc(t).day - loc(old).day);
@@ -478,10 +514,14 @@ function relayOff(why) {
   Shelly.call("Switch.Set", { id: 0, on: false }, cbNone);
 }
 function onSetResult(res, err, msg) {
-  var p = R.ps;
+  var p = R.ps, u, t;
   if (!err) return;
-  R.ps = null; R.why = "Einschalten abgelehnt: " + msg; log(R.why);
-  if (p && p.k !== "hand") R.want = { k: p.k, mm: p.mm, exp: (nowU() || 0) + 1800 };  // später nochmal, bis END_MIN
+  u = nowU(); t = ("Einschalten abgelehnt: " + msg).slice(0, 60);
+  R.ps = null; log(t);
+  if (p && p.k !== "hand") R.want = { k: p.k, mm: p.mm, exp: (u || 0) + 1800 };  // später nochmal, bis END_MIN
+  if (S.ft !== t || !(u && S.fu > 1 && loc(S.fu).day === loc(u).day)) {   // wie eine Störung: Statuszeile, LED
+    S.fu = u ? Math.floor(u) : 1; S.ft = t; save();                       // violett; je Tag einmal gespeichert
+  }
 }
 // Startet eine eigene Gabe. Rückgabe null = gestartet, sonst Grund.
 function startRun(kind, mm) {
@@ -579,6 +619,8 @@ function runEnd(st) {
   var fault = why === "fw" || !!WHY[why];
   if (!fault && r.np >= 30) learn(r.sp / r.np);
   var txt = fault ? (why === "fw" ? "Firmware-Schutz: " + st.errors.join(",") : WHY[why] + (r.det ? " (" + r.det + ")" : "")) : "";
+  if (fault) { S.fu = u ? Math.floor(u) : 1; S.ft = txt.slice(0, 60); }   // LED violett, bis ein Lauf fehlerfrei war
+  else if (r.ps >= 60) { S.fu = 0; S.ft = ""; }                          // eine Minute normal gepumpt: erledigt
   if (u) {
     var L = loc(u), L0 = loc(r.u0 || u);
     S.lr = dmy(L0.day) + " " + hm(L0.min) + " " + (r.k === "hand" ? "Hand" : (r.k === "retry" ? "Nachlauf" : "Automatik")) +
@@ -591,7 +633,6 @@ function runEnd(st) {
       if ((r.k === "auto" || r.k === "retry") && rem >= 2 && S.fc <= maxR) {
         S.rt = Math.floor(u) + (now - r.t0 < 10 ? C.RETRY_START_MIN : C.RETRY_MIN) * 60; S.rm = r1(rem);
       }
-      R.fault = { txt: txt, u: u };
     }
   }
   log("Pumpe aus: " + (why || "Ende/Stopp") + ", " + r1(r.cr) + " mm gegeben");
@@ -640,17 +681,17 @@ function today(j, n, c) {                 // c = aktuelle Werte (Lufttemperatur 
            tmin: num(j.temperature_2m_min, n), tnow: c && typeof c.temperature_2m === "number" ? c.temperature_2m : null };
 }
 // Fehler beim Verarbeiten der Wetterantwort (wie cbSafe, mit eigener Folge): Halbverbuchtes wird verworfen (Stand
-// aus dem Speicher), dann gilt die Antwort als ausgeblieben, also später nochmal, zuletzt ohne Internet. Geht auch
+// vor dieser Antwort), dann gilt die Antwort als ausgeblieben, also später nochmal, zuletzt ohne Internet. Geht auch
 // das schief, ist für heute Schluss.
 function onWx(res, err, msg, q) {
-  var L = R.wx.L, rc = R.wx.rc;
+  var L = R.wx.L, rc = R.wx.rc, s0 = JSON.stringify(S);
   try { wxIn(res, err, msg, q); }
   catch (e) {
-    log("Fehler Wetterantwort: " + e); if (!R.noStore) load();
+    log("Fehler Wetterantwort: " + e); S = JSON.parse(s0);
     R.wx.busy = true; R.wx.rc = rc;
     try { wxIn(null, -1, "Fehler", q); }
     catch (e2) {
-      log("Fehler Tagesprüfung: " + e2); if (!R.noStore) load(); R.wx.busy = false; R.wx.rc = false;
+      log("Fehler Tagesprüfung: " + e2); S = JSON.parse(s0); R.wx.busy = false; R.wx.rc = false;
       if (L && !rc) { S.ev = L.day; R.why = "Fehler, nächste Prüfung morgen"; save(); }
     }
   }
@@ -662,9 +703,8 @@ function wxIn(res, err, msg, q) {
   if (!err && res && res.code === 200) {
     try { if (httpClock(res)) R.cg++; } catch (e) { log("Fehler Uhr: " + e); }
   }
-  if (R.wx.cg !== R.cg) {                 // Uhr seit dem Abruf gestellt: L stimmt nicht mehr, gleich neu mit richtiger Uhr
-    if (!R.noStore) load();               // was evaluate() schon umgestellt hat, verwerfen
-    if (R.wx.rc) { R.wx.rc = false; R.rh = 0; }
+  if (R.wx.cg !== R.cg) {                 // Uhr seit dem Abruf gestellt: L stimmt nicht mehr, gleich neu mit richtiger Uhr;
+    if (R.wx.rc) { R.wx.rc = false; R.rh = 0; }   // verbucht ist noch nichts, das Stellen hat die Tage schon verschoben
     return;
   }
   try {
@@ -712,7 +752,7 @@ function wxIn(res, err, msg, q) {
     R.nf = S.rd === L.day - 1 && rn !== null && rn - C.RAIN_LOSS_MM < S.rx / 2;
     learnSelf(L, num(j.temperature_2m_min, n - 1), num(j.temperature_2m_max, n - 1));
   }
-  R.off = false;                          // eine geschätzte Uhr stellt httpClock oder der Zeitserver
+  R.off = false; R.pf = false;            // eine geschätzte Uhr stellt httpClock oder der Zeitserver
   decide(L, today(j, n, o.current), false);
 }
 // Frost sperrt nicht den ganzen Tag: Nach einer Frostnacht gießt die Automatik, sobald die Luft FROST_THAW_C hat
@@ -781,8 +821,12 @@ function defTime() {                      // ohne Anker und ohne Zeitserver: Ein
   log("Uhrzeit unbekannt – Einstecken gilt als 15. April " + hm(C.START_MIN));
   save();
 }
-function geo() {                          // Ortsname -> Koordinaten (Open-Meteo), einmal, dann gespeichert
-  R.gn = upS() + 900;                     // Postleitzahlen kennt der Dienst für Deutschland nicht, Ortsnamen schon
+function auto() { return C.ORT === "auto"; }
+function geo() {                          // Ort -> Koordinaten, einmal, dann gespeichert: "auto" und ein nicht
+  if (auto() || S.lf) ipCheck(); else geoName();   // gefundener Name über die IP-Ortung, sonst über den Namen
+  R.gn = upS() + 900;
+}
+function geoName() {                      // Ortssuche von Open-Meteo; Postleitzahlen kennt sie nicht, Ortsnamen schon
   Shelly.call("HTTP.GET", { url: "https://geocoding-api.open-meteo.com/v1/search?count=1&name=" + uenc(C.ORT) +
     "&countryCode=" + C.LAND, timeout: 20 }, cbSafe, onGeo);
 }
@@ -799,12 +843,63 @@ function uenc(t) {                        // für die URL: UTF-8 mit Prozentzeic
   return o;
 }
 function onGeo(res, err, msg) {
-  var g = null;
-  try { if (!err && res && res.code === 200) g = JSON.parse(res.body).results[0]; } catch (e) { g = null; }
-  if (!g || typeof g.latitude !== "number" || typeof g.longitude !== "number") return;
-  R.la = S.la = r2(g.latitude); R.lo = S.lo = r2(g.longitude); S.pz = C.LAND + C.ORT; R.off = false;
+  var j = null, g;
+  if (!err && res && res.code === 200) {
+    httpClock(res);
+    try { j = JSON.parse(res.body); } catch (e) { j = null; }
+  }
+  if (!j) return;                         // Dienst nicht erreichbar: in 15 min nochmal
+  g = j.results && j.results[0];
+  if (!g) {                               // Name unbekannt: Ort per IP, der Name wird täglich nochmal gesucht
+    if (!S.lf) { S.lf = 1; save(); log("Ort " + C.ORT + " nicht gefunden – nehme die IP-Ortung"); }
+    R.gn = 0; return;
+  }
+  if (typeof g.latitude !== "number" || typeof g.longitude !== "number") return;
+  S.lf = 0; setLoc(g.latitude, g.longitude, "");
+  R.ia = 0;                               // gleich gegen die IP-Ortung prüfen
   log("Ort " + C.ORT + ": " + R.la + ", " + R.lo);
-  save();
+}
+function setLoc(la, lo, c) {
+  R.la = S.la = r2(la); R.lo = S.lo = r2(lo); S.pz = C.LAND + C.ORT; S.lc = c; R.off = false; save();
+}
+function ipCheck() {                      // IP-Ortung: Ort für "auto" und Rückfall, sonst Gegenprobe; auch Uhrzeit
+  Shelly.call("HTTP.GET", { url: IP_URL, timeout: 15 }, cbSafe, onIp);
+  R.ia = upS() + 86400;                   // einmal am Tag, nach einem Fehlschlag in 1 h (onIp)
+}
+function onIp(res, err, msg) {
+  var j = null, la, lo, a, c, d;
+  if (!err && res && res.code === 200) {
+    httpClock(res);
+    try { j = JSON.parse(res.body); } catch (e) { j = null; }
+  }
+  la = j ? +j.latitude : NaN; lo = j ? +j.longitude : NaN;   // GeoJS liefert Text
+  if (!(la >= -90 && la <= 90 && lo >= -180 && lo <= 180) || (!la && !lo)) { R.ia = upS() + 3600; return; }
+  a = +j.accuracy > 0 ? r0(+j.accuracy) : 999;                 // Ungenauigkeit (km)
+  c = typeof j.city === "string" ? asc(j.city) : "";
+  if ((auto() || S.lf) && (R.la === null || (S.lq > C.LOC_KM && a < S.lq))) {   // Ort per IP; ein ungenauer weicht
+    S.lq = a; setLoc(la, lo, c); log("Ort per IP: " + c + " " + R.la + ", " + R.lo + " (±" + a + " km)");   // einem genaueren
+  }
+  if (R.la === null) return;
+  if (auto() || S.lf) R.lw = S.lq > C.LOC_KM ? "Ort per IP ungenau (±" + S.lq + " km) – ORT eintragen" : "";
+  else {
+    d = km(R.la, R.lo, la, lo);
+    R.lw = d > Math.max(C.LOC_KM, 2 * a) ? "Ort prüfen: " + C.ORT + " liegt " + r0(d) + " km von der IP-Ortung (" + c + ")" : "";
+  }
+  if (R.lw) log(R.lw);
+}
+function asc(t) {                         // Stadtname der IP-Ortung nur in ASCII: Umlaute umschreiben, ob sie als
+  var o = "", i, k, m = { 196: "Ae", 214: "Oe", 220: "Ue", 223: "ss", 228: "ae", 246: "oe", 252: "ue" };   // Zeichen
+  for (i = 0; i < t.length && o.length < 30; i++) {                    // oder als UTF-8-Bytes ankommen; Rest weglassen
+    k = t.charCodeAt(i);
+    if (k === 195 && i + 1 < t.length) { i++; k = t.charCodeAt(i) + 64; }   // UTF-8 C3 xx
+    if (k > 31 && k < 127) o += String.fromCharCode(k);
+    else if (m[k]) o += m[k];
+  }
+  return o;
+}
+function km(a, b, c, d) {                 // Abstand zweier Orte (km); die Näherung genügt für den Vergleich
+  var x = (d - b) * Math.cos((a + c) * Math.PI / 360) * 111.3, y = (c - a) * 111.3;
+  return Math.sqrt(x * x + y * y);
 }
 function shiftDays(k) {                   // die Annahme 15. April war falsch: Tagesmarken mitverschieben [5]
   if (S.ev >= 0) S.ev += k;
@@ -814,13 +909,18 @@ function shiftDays(k) {                   // die Annahme 15. April war falsch: T
   if (S.xa >= 0) S.xa += k;
   if (S.rd >= 0) S.rd += k;
   if (S.rc >= 0) S.rc += k;
-  S.rt = 0; S.df = 0; R.fault = null; R.td = null; R.ty = null; R.z = null;
+  if (S.fu > 1) S.fu += k * 86400;
+  S.rt = 0; S.df = 0; R.td = null; R.ty = null; R.z = null;
   log("Echte Uhrzeit da: Tagesmarken um " + k + " Tage verschoben");
 }
 function schedule() {
+  flush();                                // von der Schreibbremse gehaltenen Stand schreiben, sobald erlaubt
   if (R.defAt && upS() >= R.defAt) defTime();
   if (upS() >= R.cfgAt) { R.cfgAt = upS() + 3600; applyCfg(); watchdog(); }   // stündlich: Notabschaltung, Zeitpläne
   if (!R.h && upS() - R.hb >= (R.hn < 10 ? 60 : 3600)) vcStart();          // Bedienfeld fehlt: nochmal versuchen
+  if (R.la === null && upS() >= R.gn) geo();                    // Ort noch unbekannt: alle 15 min fragen
+  else if (upS() >= R.ia) { ipCheck(); if (S.lf) geoName(); }  // täglich: Ortsprüfung (bringt auch die Uhrzeit, schon
+                                                                // ohne Ort) und den nicht gefundenen Namen nochmal suchen
   var u = nowU();
   if (!u) return;
   var L = loc(u), now = upS();
@@ -836,11 +936,10 @@ function schedule() {
   }
   if (u - S.t >= C.ANCHOR_S) save();                       // Zeitanker
   temp(L, now);
-  if (R.la === null && now >= R.gn) geo();                        // Ort noch unbekannt: alle 15 min fragen
-  if ((R.est || R.off) && R.la !== null && !R.wx.busy && now >= R.pbNext) {   // Internet wieder da? (15 min)
-    R.pbNext = now + 900;
+  if ((R.est || R.off || R.pf || !R.pk) && R.la !== null && !R.wx.busy && now >= R.pbNext) {   // Wetterdienst da?
     Shelly.call("HTTP.GET", { url: "https://api.open-meteo.com/v1/forecast?latitude=" + R.la + "&longitude=" + R.lo +
       "&daily=temperature_2m_min&timezone=auto&forecast_days=1", timeout: 10 }, cbSafe, onProbe);
+    R.pbNext = now + 900;                 // nach dem Start einmal, dann alle 15 min, solange etwas fehlt
   }
   if (S.pu && L.day > S.pu) { S.pu = 0; save(); }
   if (R.run && R.run.k !== "hand" && (!autoOn() || paused(L))) relayOff("aus");   // Automatik aus: Lauf beenden
@@ -860,9 +959,16 @@ function schedule() {
     else if (!startRun("retry", S.rm)) { S.rt = 0; save(); }
   }
 }
-function onProbe(res, err, msg) { if (!err && res && res.code === 200) { R.off = false; httpClock(res); } }
+function onProbe(res, err, msg) {
+  R.pk = true;
+  if (!err && res && res.code === 200) { R.off = false; R.pf = false; httpClock(res); }
+  else {                                  // LED gelb, bis der Wetterdienst wieder antwortet; gleich nach dem
+    R.pf = true;                          // Hochfahren steht das WLAN vielleicht noch nicht: nach 1 min nochmal
+    if (upS() < 600) R.pbNext = upS() + 60;
+  }
+}
 function statusText(L) {
-  var r = R.run, t;
+  var r = R.run, t, f = S.fu > 1 ? loc(S.fu) : null;
   if (R.weld) return "ALARM: Pumpe zieht Strom trotz AUS – Relais klebt? Stecker ziehen!";
   if (r) {
     t = r.sec - (upS() - r.t0);
@@ -870,25 +976,30 @@ function statusText(L) {
       f1(r.mm) + " mm, noch " + Math.max(0, r0(t / 60)) + " min, " + r0(sw().apower || 0) + " W";
   }
   if (!L) return "Uhrzeit unbekannt – Automatik wartet auf Internet. Taster geht.";
-  if (R.fault && L.day === loc(R.fault.u).day) {
-    t = "Störung " + hm(loc(R.fault.u).min) + ": " + R.fault.txt;
-    t += S.rt ? ". Nachlauf " + hm(loc(S.rt).min) : ". Nächster Versuch morgen " + hm(C.START_MIN);
+  if (S.fu && (!f || f.day === L.day)) {    // Störung heute; ältere stehen hinten, bis ein Lauf fehlerfrei war
+    t = "Störung" + (f ? " " + hm(f.min) : "") + ": " + S.ft;
+    t += S.rt ? ". Nachlauf " + hm(loc(S.rt).min) : (R.want ? ". Neuer Versuch bis " + hm(C.END_MIN) :
+      ". Nächster Versuch morgen " + hm(C.START_MIN));
   } else if (!inSeason(L)) t = "Winterpause bis 01." + p2(C.SEASON_FROM) + ". – Taster geht";
   else if (!autoOn()) t = "Automatik aus – Taster geht";
   else if (paused(L)) t = "Pause bis " + dmy(S.pu);
   else if (S.ev === L.day) t = "Heute: " + (R.why || "geprüft");
   else if (L.min < C.START_MIN) t = "Bereit, Prüfung " + hm(C.START_MIN);
   else t = L.min < C.END_MIN ? "Prüfung läuft" : "Heute nicht geprüft, nächste Prüfung morgen " + hm(C.START_MIN);
+  if (f && f.day !== L.day) t += " · Störung " + dmy(f.day) + " " + hm(f.min) + ": " + S.ft;
+  if (R.def) t += " · Uhr angenommen: Einstecken = " + hm(C.START_MIN);   // Hinweise vor den Infos: gekürzt wird hinten
+  else if (R.est) t += " · Uhr geschätzt";
+  if (R.la === null) t += " · Ort " + (S.lf ? C.ORT + " nicht gefunden" : "unbekannt");
+  else if (S.lf) t += " · Ort " + C.ORT + " nicht gefunden, Ort per IP: " + S.lc;
+  if (R.lw) t += " · " + R.lw;
+  if ((R.off || R.pf) && R.la !== null) t += " · ohne Internet";   // ohne Ort gibt es kein Wetter, egal ob Internet
+  if (R.noStore) t += " · Speicher fehlt (Firmware alt)";
   if (S.lr) t += " · Zuletzt " + S.lr;
   if (R.note && upS() - R.noteU > 43200) R.note = "";
   if (R.note) t += " · " + R.note;
   else if (S.pn) t += " · Pumpe normal " + S.pn + " W";
-  if (R.def) t += " · Uhr angenommen: Einstecken = " + hm(C.START_MIN);
-  else if (R.est) t += " · Uhr geschätzt";
-  if (R.la === null) t += " · Ort unbekannt";
-  else if (R.off) t += " · ohne Internet";
-  if (R.noStore) t += " · Speicher fehlt (Firmware alt)";
-  return t;
+  while (t.length > 230 && t.lastIndexOf(" · ") > 0) t = t.slice(0, t.lastIndexOf(" · "));   // Textfeld: 255 Byte
+  return t.length > 230 ? t.slice(0, 230) : t;
 }
 function ui() {
   var u = nowU(), L = u ? loc(u) : null, k;
@@ -927,8 +1038,8 @@ function ledInit() {                       // aktuellen LED-Zustand lesen, damit
 }
 function ledUpdate(L) {
   var want = "ok", now = upS(), a = [], i;
-  if (R.weld || (R.fault && L && L.day === loc(R.fault.u).day)) want = "err";
-  else if (!L || R.off || R.est) want = "warn";
+  if (R.weld || S.fu) want = "err";
+  else if (!L || R.off || R.pf || R.est || R.la === null || S.lf || R.lw || R.noStore) want = "warn";
   if (want !== R.ledWant) { R.ledWant = want; R.ledSince = now; }
   if (want === R.led || now - R.ledSince < 120) return;
   for (i = 0; i < R.ledN.length; i++) if (now - R.ledN[i] < 86400) a.push(R.ledN[i]);
@@ -968,7 +1079,7 @@ function applyCfg() {                     // Firmware-Sicherungen, nur schreiben
   if (c.auto_on === true) { want.auto_on = false; need = true; }   // schaltete nach jedem Aus wieder ein
   if (c.autorecover_voltage_errors === true) { want.autorecover_voltage_errors = false; need = true; }   // ebenso nach Spannungsfehler
   if (c.name !== "Brunnenpumpe") { want.name = "Brunnenpumpe"; need = true; }
-  if (need) Shelly.call("Switch.SetConfig", { id: 0, config: want }, cbNone);
+  if (need) Shelly.call("Switch.SetConfig", { id: 0, config: want }, cbNone);   // Sicherung: nie gebremst
 }
 var WD_SPEC = "0 */5 * * * *";            // Wächter: alle 5 min Script.Start (läuft es schon, passiert nichts)
 var UP_SPEC = "0 23 3 * * *";             // Firmware: täglich 03:23 die neueste stabile, falls es eine gibt
@@ -988,15 +1099,17 @@ function onSchedList(res, err, msg) {
     }
   }
   if (!wd) {
-    Shelly.call("Schedule.Create", { enable: true, timespec: WD_SPEC,
-      calls: [{ method: "Script.Start", params: { id: Script.id } }] }, cbSafe, onSchedSet);
-    log("Wächter angelegt: Zeitplan startet das Skript alle 5 min, falls es steht");
+    if (cfgCall("Schedule.Create", { enable: true, timespec: WD_SPEC,
+      calls: [{ method: "Script.Start", params: { id: Script.id } }] }, onSchedSet)) {
+      log("Wächter angelegt: Zeitplan startet das Skript alle 5 min, falls es steht");
+    }
   } else if (wd.enable !== true || wd.timespec !== WD_SPEC) {   // abgeschaltet oder alter Takt: richten
-    Shelly.call("Schedule.Update", { id: wd.id, enable: true, timespec: WD_SPEC }, cbSafe, onSchedSet);
+    cfgCall("Schedule.Update", { id: wd.id, enable: true, timespec: WD_SPEC }, onSchedSet);
   } else if (!up) {
-    Shelly.call("Schedule.Create", { enable: true, timespec: UP_SPEC,
-      calls: [{ method: "Shelly.Update", params: { stage: "stable" } }] }, cbSafe, onSchedSet);
-    log("Firmware-Update angelegt: täglich 03:23 die neueste stabile");
+    if (cfgCall("Schedule.Create", { enable: true, timespec: UP_SPEC,
+      calls: [{ method: "Shelly.Update", params: { stage: "stable" } }] }, onSchedSet)) {
+      log("Firmware-Update angelegt: täglich 03:23 die neueste stabile");
+    }
   }
 }
 function onSchedSet(res, err, msg) {
@@ -1005,9 +1118,12 @@ function onSchedSet(res, err, msg) {
 }
 function init() {
   load();
-  if (typeof C.LAT === "number" && typeof C.LON === "number") { R.la = C.LAT; R.lo = C.LON; }   // Ort eingetragen
+  if (typeof C.LAT === "number" && typeof C.LON === "number") {   // eingetragen: keine Ortssuche, keine Ortsprüfung
+    R.la = C.LAT; R.lo = C.LON; R.ia = 1e12; S.lf = 0; S.lc = "";
+  }
   else if (S.la !== null) { R.la = S.la; R.lo = S.lo; }                                        // Ort gespeichert
   var s = Shelly.getComponentStatus("sys"), up = upS();
+  if (S.wu > 0 && up >= S.wu) { R.sv = S.wu; R.wn = S.wn; R.w24 = Math.min(S.wb, up); }   // Skript-Neustart: Bremse zählt weiter
   if (s && typeof s.unixtime === "number" && s.unixtime > C.T_MIN && (!S.ce || up < S.tu || ntpSet())) {   // echte Zeit
     if (S.ce || S.df) {                    // Zeitserver hat gestellt, bevor das Skript lief
       if (S.df === 1) shiftDays(loc(s.unixtime).day - loc(S.t).day);
@@ -1015,9 +1131,11 @@ function init() {
     }
   } else if (S.t > C.T_MIN) {              // Zeitanker: untere Schranke, nie zu früh; nach Skript-Neustart genau
     R.eb = S.t + (up >= S.tu ? up - S.tu : up); R.eu = up; R.est = true; R.def = S.df === 1;
-    S.ce = 1; S.cs = Math.floor(R.eb);
-    Shelly.call("Sys.SetTime", { unixtime: S.cs }, cbNone);
-    log("Uhr aus Zeitanker geschätzt"); save();
+    if (S.ce !== 1 || up < S.tu || !(s && s.unixtime > C.T_MIN)) {   // nach einem Skript-Neustart läuft die
+      S.ce = 1; S.cs = Math.floor(R.eb);                              // gestellte Geräteuhr weiter: nichts zu schreiben
+      Shelly.call("Sys.SetTime", { unixtime: S.cs }, cbNone);
+      log("Uhr aus Zeitanker geschätzt"); save();
+    }
   } else R.defAt = up + 120;               // kein Anker: 2 min auf den Zeitserver warten
   applyCfg(); watchdog(); R.cfgAt = up + 3600;   // danach stündlich aus schedule()
   ledInit();
