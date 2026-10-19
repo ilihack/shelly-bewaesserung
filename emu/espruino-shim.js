@@ -74,8 +74,10 @@ var Virtual = { getHandle: function (key) {
     off: function (id) { }
   };
 } };
+var HTTPServer = { registerEndpoint: function (n, cb) { __W.ep = cb; return 'script/1/' + n; } };
 var Shelly = {
   getUptimeMs: function () { return __W.up; },
+  getDeviceInfo: function () { return { model: 'S3PL-20112EU', gen: 3, ver: '1.7.1', app: 'OutdoorPlugSG3' }; },
   getComponentStatus: function (t, id) {
     if (t === 'sys') return { unixtime: Math.floor(__unix()), uptime: Math.floor(__W.up / 1000) };
     if (t === 'switch') {
@@ -99,7 +101,7 @@ var Shelly = {
     else if (method === 'Group.Set') { __W.vc['group:' + p.id].value = p.value; __W.cfgWrites++; }
     else if (method === 'HTTP.GET') { lat = 400; res = { code: 200, body: p.url.indexOf('geocoding') > 0 ?
       '{"results":[{"name":"Ludwigshafen am Rhein","latitude":49.48121,"longitude":8.44641}]}' :
-      p.url.indexOf('geojs.io') > 0 ? '{"latitude":"49.4874","longitude":"8.4660","accuracy":20,"city":"Mannheim"}' : __wx(p.url) }; }
+      __wx(p.url) }; }
     else if (method === 'Sys.SetTime') { }
     else if (method === 'Schedule.List') { res = { jobs: JSON.parse(JSON.stringify(__W.jobs)), rev: __W.jobs.length }; }
     else if (method === 'Schedule.Create') { p.id = __W.jobs.length + 1; __W.jobs.push(p); __W.cfgWrites++; res = { id: p.id }; }

@@ -3,13 +3,11 @@
 [BW] Firmware-Update angelegt: täglich 03:23 die neueste stabile
 [BW] Ort Ludwigshafen am Rhein: 49.48, 8.45
 [BW] Tagesprüfung: Defizit 14 mm -> gegossen 14 mm
-[BW] Start auto 14 mm, 98 min
 [BW] Pumpe an (auto), Ziel 14 mm in 98 min
 ## Brunnen leer 10:20 T20970
 [BW] Schutz: unterlast (585 W < 990 W)
 [BW] Pumpe aus: unterlast, 2.9 mm gegeben
 ## Brunnen wieder voll 11:10 T20970
-[BW] Start retry 11.1 mm, 77 min
 [BW] Pumpe an (retry), Ziel 11.1 mm in 77 min
 [BW] Pumpe aus: Ende/Stopp, 11.1 mm gegeben
 ## Taster 18:00 T20970
@@ -17,9 +15,35 @@
 [BW] Pumpe aus: Ende/Stopp, 6 mm gegeben
 [BW] Tagesprüfung: Defizit 3.4 mm -> nicht nötig (3,4 mm)
 ## Relais: AN 10:00 T20970 skript | AUS 10:20 T20970 skript | AN 11:20 T20970 skript | AUS 12:37 T20970 timer | AN 18:00 T20970 taster | AUS 18:41 T20970 timer
-## Zustand: {"v":1,"t":1811923201,"d":3.4,"dp":20970,"pi":0,"ev":20971,"pn":1320,"ln":5,"pu":0,"fd":20970,"fc":1,"rt":0,"rm":11.1,"lr":"01.06. 18:00 Hand 6 mm","xa":-1,"xe":[],"xw":[],"xd":0,"ob":-99,"oa":-99,"df":0,"rd":-1,"rx":0,"rc":-1,"rk":0,"rf":0,"tu":90001,"ce":0,"cs":0,"fu":0,"ft":"","lf":0,"lc":"","lq":999,"wu":90001,"wn":1,"wb":90001,"la":49.48,"lo":8.45,"pz":"DELudwigshafen am Rhein"}
+## Zustand: {"v":1,"t":1811923201,"d":3.4,"dp":20970,"pi":0,"ev":20971,"pn":1320,"ln":5,"pu":0,"fd":20970,"fc":1,"rt":0,"rm":11.1,"lr":"01.06. 18:00 Hand 6 mm","xa":-1,"xe":[],"xw":[],"xd":0,"ob":-99,"oa":-99,"df":0,"rd":-1,"rx":0,"rc":-1,"rk":0,"rf":0,"tu":90001,"ce":0,"cs":0,"fu":1811838009,"ft":"Trockenlauf oder Hahn zu (585 W < 990 W)","fo":0,"s0":20970,"sa":2,"sh":1,"sm":20,"sf":1,"io":0,"id":0,"os":0,"wu":90001,"wn":1,"wb":90001,"la":49.48,"lo":8.45,"pz":"DELudwigshafen am Rhein"}
 ## Status: Heute: nicht nötig (3,4 mm) · Zuletzt 01.06. 18:00 Hand 6 mm · Pumpe normal 1320 W
 ## Zeitplaene: [{"enable":true,"timespec":"0 */5 * * * *","calls":[{"method":"Script.Start","params":{"id":1}}],"id":1},{"enable":true,"timespec":"0 23 3 * * *","calls":[{"method":"Shelly.Update","params":{"stage":"stable"}}],"id":2}] | LED: {"leds":{"mode":"switch","colors":{"switch:0":{"on":{"rgb":[0,0,100],"brightness":100},"off":{"rgb":[0,100,0],"brightness":100}}}}}
-## Zahlen: Schreibvorgaenge 11, LED 3, Konfig 14, Fehler 0, RPC max 3, Timer max 1, Speicher max 4945 von 8192 Bloecken
+## Diagnose (200, 1252 Zeichen; Speicher davor 4897, mit Seite 5002 Bloecke)
+## | Bewässerung 02.06.2027 11:00
+## | 
+## | Status: Heute: nicht nötig (3,4 mm) · Zuletzt 01.06. 18:00 Hand 6 mm · Pumpe normal 1320 W
+## | LED: grün – alles in Ordnung
+## | Letzte Störung: 01.06.2027 10:20 Trockenlauf oder Hahn zu (585 W < 990 W) (erledigt)
+## | Letzter Lauf: 01.06. 18:00 Hand 6 mm
+## | Saison seit 01.06.: Automatik 2, Hand 1, zusammen 20 mm, Störungen 1
+## | Bodenkonto 3,4 mm, Normalleistung 1320 W, Eigenwärme Fühler Nacht/Tag - / - K
+## | Uhr: Zeitserver
+## | Internet: ok
+## | Ort: Ludwigshafen am Rhein 49.48, 8.45
+## | Gerät: Firmware 1.7.1, an seit 01.06.2027 09:00 (26 h), davor zuletzt gespeichert 01.06.2027 09:00; Skript läuft seit 26 h
+## | Flash-Schreibvorgänge seit Skriptstart: Speicher 11, Einstellungen 11, LED 3
+## | 
+## | Letzte Meldungen:
+## | 02.06. 10:00 Tagesprüfung: Defizit 3.4 mm -> nicht nötig (3,4 mm)
+## | 01.06. 18:41 Pumpe aus: Ende/Stopp, 6 mm gegeben
+## | 01.06. 18:00 Pumpe an (hand), Ziel 6 mm in 42 min
+## | 01.06. 12:37 Pumpe aus: Ende/Stopp, 11.1 mm gegeben
+## | 01.06. 11:20 Pumpe an (retry), Ziel 11.1 mm in 77 min
+## | 01.06. 10:20 Pumpe aus: unterlast, 2.9 mm gegeben
+## | 01.06. 10:20 Schutz: unterlast (585 W < 990 W)
+## | 01.06. 10:00 Pumpe an (auto), Ziel 14 mm in 98 min
+## | 01.06. 10:00 Tagesprüfung: Defizit 14 mm -> gegossen 14 mm
+## | 01.06. 09:00 Ort Ludwigshafen am Rhein: 49.48, 8.45
+## Zahlen: Schreibvorgaenge 11, LED 3, Konfig 14, Fehler 0, RPC max 3, Timer max 1, Speicher max 5098 von 8192 Bloecken
 ## ENDE
 exit 0

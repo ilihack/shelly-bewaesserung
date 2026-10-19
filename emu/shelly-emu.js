@@ -86,6 +86,7 @@ class World {
     this.dev = null;
     this.bootCount = 0;
     this.verbose = !!opts.verbose;
+    this.noHttpServer = !!opts.noHttpServer;
     this.limits = { timers: 0, rpc: 0, handlers: 0 };
     this.boot(0);
   }
@@ -119,7 +120,7 @@ class World {
       w.bootCount++;
       const dev = { bootAt: w.t, timers: {}, nTimers: 0, rpcOpen: 0, handlers: 0, output: false,
         timer: null, src: 'init', errors: [], clockBase: null, clockUp: 0, ntpSynced: false, syncTs: null,
-        vcHandles: {}, ctx: null, scriptRunning: false };
+        vcHandles: {}, endpoints: {}, ctx: null, scriptRunning: false };
       w.dev = dev;
       // Anfangszustand Relais
       let on = false;
@@ -295,8 +296,18 @@ class World {
       return h;
     };
     ctx.Virtual = { getHandle: handle };
+    if (!w.noHttpServer) ctx.HTTPServer = {   // Diagnose-Seite: http://<IP>/script/1/<name> (w.noHttpServer: alte Firmware)
+      registerEndpoint(name, cb, ud) {
+        if (typeof name !== 'string' || typeof cb !== 'function') throw new Error('registerEndpoint: Parameter');
+        if (Object.keys(dev.endpoints).length >= 5 && !dev.endpoints[name]) throw new Error('registerEndpoint: höchstens 5');
+        dev.endpoints[name] = { cb: guard(cb), ud };
+        return '/script/1/' + name;
+      }
+    };
     ctx.Shelly = {
       getUptimeMs: () => w.uptime(dev),
+      getDeviceInfo: () => ({ id: 'shellyoutdoorsg3-e4b063f0a1b2', mac: 'E4B063F0A1B2', model: 'S3PL-20112EU', gen: 3,
+        fw_id: '20250924-062729/1.7.1-gd336f31', ver: w.fwVer || '1.7.1', app: 'OutdoorPlugSG3', auth_en: false }),
       getComponentStatus(type, id) {
         if (type === 'sys') {
           const u = w.devUnix(dev);
@@ -378,9 +389,7 @@ class World {
               if (!w.internet || w.httpFail) { err = -1; msg = 'Failed to connect'; lat = (params.timeout || 10) * 1000; break; }
               const code = w.httpCode ? w.httpCode(params.url) : 200;      // Test: der Dienst antwortet mit einem Fehler
               res = { code, message: code === 200 ? 'OK' : 'Service Unavailable', headers: w.httpDate === false ? {} : { date: new Date(w.t + 300).toUTCString() },   // Serverzeit
-                body: code !== 200 ? '' : params.url.indexOf('geocoding-api') > 0 ? w.geoBody(params.url) :
-                  params.url.indexOf('geojs.io') > 0 ? w.ipBody() : w.weatherBody(params.url) };
-              if (params.url.indexOf('geojs.io') > 0 && w.ipGeo === null) res = { code: 503, message: 'Service Unavailable', headers: {}, body: '' };
+                body: code !== 200 ? '' : params.url.indexOf('geocoding-api') > 0 ? w.geoBody(params.url) : w.weatherBody(params.url) };
               break;
             }
             default: err = -114; msg = 'Method ' + method + ' not found';
@@ -398,13 +407,13 @@ class World {
   restartScript() {                     // Skript neu starten (z. B. Update), Relais und Timer der Firmware bleiben
     const dev = this.dev;
     dev.scriptGen = (dev.scriptGen || 0) + 1;
-    dev.timers = {}; dev.nTimers = 0; dev.handlers = 0; dev.vcHandles = {}; dev.rpcOpen = 0;
+    dev.timers = {}; dev.nTimers = 0; dev.handlers = 0; dev.vcHandles = {}; dev.endpoints = {}; dev.rpcOpen = 0;
     this.after(1000, () => this.startScript(dev), dev);
   }
   stopScript() {                        // Skript bleibt stehen (Absturz o. ä.), Gerät läuft weiter
     const dev = this.dev;
     dev.scriptGen = (dev.scriptGen || 0) + 1;
-    dev.timers = {}; dev.nTimers = 0; dev.handlers = 0; dev.vcHandles = {}; dev.rpcOpen = 0; dev.scriptRunning = false;
+    dev.timers = {}; dev.nTimers = 0; dev.handlers = 0; dev.vcHandles = {}; dev.endpoints = {}; dev.rpcOpen = 0; dev.scriptRunning = false;
     this.logEvt('SKRIPT STEHT');
   }
   fireSchedules() {                     // Gerätezeitplan ausführen (nur Script.Start wird nachgebildet)
@@ -465,12 +474,16 @@ class World {
   }
 
   eval(code) { return require('vm').runInContext(code, this.dev.ctx); }   // wie Script.Eval
+  endpoint(name, query) {               // wie GET http://<IP>/script/1/<name>: Antwort des Skripts
+    const ep = this.dev && this.dev.endpoints[name];
+    if (!ep) return { code: 404, body: '' };
+    const out = { code: 0, body: '', headers: [], sent: false };
+    const res = { send() { out.code = res.code || 200; out.body = asUtf8(String(res.body || '')); out.headers = res.headers || []; out.sent = true; return true; } };
+    ep.cb({ method: 'GET', query: query || '', headers: [], body: '' }, res, ep.ud);
+    return out;
+  }
 
   // ---------- Ortssuche (Open-Meteo-Geocoding): bekannte Orte, sonst leere Antwort wie beim echten Dienst ----------
-  ipBody() {                            // IP-Ortung wie GeoJS (Zahlen als Text); w.ipGeo: eigener Ort, null = Dienst gestört
-    const g = this.ipGeo || { latitude: '49.4874', longitude: '8.4660', accuracy: 20, city: 'Mannheim', country_code: 'DE', timezone: 'Europe/Berlin' };
-    return JSON.stringify(Object.assign({ ip: '192.0.2.10', country: 'Germany', organization_name: 'Test' }, g));
-  }
   geoBody(url) {
     const q = Object.fromEntries(new URL(url).searchParams);
     const orte = this.orte || { 'DE|Ludwigshafen am Rhein': [49.48121, 8.44641], 'DE|München': [48.13743, 11.57549] };

@@ -1,10 +1,10 @@
-  Aufspielen gestartet, 29449 Byte
+  Aufspielen gestartet, 30179 Byte
   [Konsole] Gerät: S3PL-20112EU (OutdoorPlugSG3), Firmware 1.7.1, Gen 3
   [Konsole] Firmware 1.7.1 -> 2.1.0 (neueste stabile) wird installiert
   [Konsole] Firmware jetzt 2.1.0
   [Konsole] Matter abgeschaltet
   [Konsole] Skriptplatz angelegt: 1
-  [Konsole] Code hochgeladen: 29449 Byte in 29 Stücken
+  [Konsole] Code hochgeladen: 30179 Byte in 30 Stücken
   [Konsole] Autostart an
   [Konsole] Selbsttest im Skript (Ort, Wetter 15 Tage): ok, Ort 49.48 8.45
   [Konsole] Skript läuft: true, Speicher 12000 (Spitze 14000, frei 60000, Reserve in der Spitze 58000)
@@ -13,7 +13,24 @@
   [Konsole] Status: Heute nicht geprüft, nächste Prüfung morgen 10:00
   [Konsole] Uhr: 2026-10-19T13:00:55.000Z
   [Konsole] Wetterdienst vom Gerät: ok 2026-10-19: ET0 4 mm gestern
-  [Konsole] IP-Ortung vom Gerät: ok Mannheim (49.4874, 8.4660, ±20 km)
+  [Konsole] Diagnose-Seite: http://127.0.0.1:43435/script/1/info
+  [Konsole]     | Bewässerung 19.10.2026 15:00
+    | 
+    | Status: Heute nicht geprüft, nächste Prüfung morgen 10:00
+    | LED: noch nicht gesetzt, wechselt bald auf grün – alles in Ordnung
+    | Letzte Störung: keine
+    | Letzter Lauf: keiner
+    | Saison seit -: Automatik 0, Hand 0, zusammen 0 mm, Störungen 0
+    | Bodenkonto 0 mm, Normalleistung nicht gelernt, Eigenwärme Fühler Nacht/Tag - / - K
+    | Uhr: Zeitserver
+    | Internet: ok
+    | Ort: Ludwigshafen am Rhein 49.48, 8.45
+    | Gerät: Firmware 1.7.1, an seit 19.10.2026 14:59 (1 min); Skript läuft seit 0 min
+    | Flash-Schreibvorgänge seit Skriptstart: Speicher 0, Einstellungen 0, LED 0
+    | 
+    | Letzte Meldungen:
+    | 19.10. 15:00 Selbsttest Wetter: ok
+    | 19.10. 15:00 gestartet, Bodenkonto 0 mm, Normalleistung noch nicht gelernt
   [Konsole] offenen Access Point abgeschaltet
   [Konsole] Sicherheit: Gerätepasswort AUS – Empfehlung: --neues-passwort <pw> oder in der App setzen, Access Point aus, Steuerung über Bluetooth aus
   [Konsole] Wächter-Zeitplan: alle 5 min, aktiv

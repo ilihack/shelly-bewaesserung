@@ -24,7 +24,7 @@ startMock(async (m) => {
     const r = bw.ergebnis || {};
     const ok = !bw.fehler && r.ok && !m.state.matter && m.state.putCount === Math.ceil(code.length / 1024) &&
       (r.bedienfeld || []).length === 7 && /Bereit|Heute/.test(r.status || '') &&
-      m.state.evals === 2 && m.state.updates === 1 && m.state.ver === '2.1.0' && m.state.ap === false && r.waechter === true &&
+      m.state.evals === 3 && /^Bewässerung/.test(r.diagnose || '') && m.state.updates === 1 && m.state.ver === '2.1.0' && m.state.ap === false && r.waechter === true &&
       m.world.logs.some((l) => /Selbsttest Wetter: ok/.test(l.msg));
     console.log(ok ? '\nBROWSERWEG: bestanden' : '\nBROWSERWEG: FEHLER ' + JSON.stringify(bw));
     process.exitCode = ok ? 0 : 1;

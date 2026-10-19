@@ -7,9 +7,10 @@
  *   Browser:        auf der Weboberfläche des Shelly (http(s)://<ip>/) in der Konsole den Inhalt von
  *                   build/deploy-browser.js einfügen (gleiche Herkunft, kein CORS; ohne Gerätepasswort)
  * Schritte: Gerät prüfen -> neueste stabile Firmware -> Matter aus -> Wächter anhalten -> Skript anlegen/ersetzen
- *           -> Autostart an -> starten, Bedienfeld anlegen lassen, Skript neu starten -> Selbsttest -> prüfen:
+ *           -> Autostart an -> starten, Bedienfeld anlegen lassen, Skript neu starten -> Selbsttest und Diagnose-Seite
+ *           (Speicher unter Last) -> prüfen:
  *           Skript läuft fehlerfrei, Einschaltzustand aus, Notabschaltung 9600 s, kein Wiedereinschalten,
- *           Bedienfeld vollständig, Statuszeile da, Wetterdienst und IP-Ortung erreichbar, Speicherreserve >= 2 KB,
+ *           Bedienfeld vollständig, Statuszeile da, Wetterdienst erreichbar, Speicherreserve >= 2 KB, Diagnose-Seite,
  *           Sicherheit (Passwort, Access Point, Bluetooth), Firmware-Update-Zeitplan, Wächter startet ein angehaltenes
  *           Skript neu; auf Wunsch zuletzt das Gerätepasswort setzen (--neues-passwort).
  * Hat der Shelly ein Passwort (Benutzer admin), meldet er sich per Digest mit SHA-256 an (Shelly-Doku,
@@ -158,6 +159,9 @@ async function deployShelly(base, code, log, opt) {
   } catch (e) { selbst = 'nicht startbar: ' + e.message; }
   out.selbsttest = selbst;
   step('Selbsttest im Skript (Ort, Wetter 15 Tage): ' + selbst);
+  // Diagnose-Seite einmal aufbauen lassen (dieselbe Seite wie im Browser), damit ihr Speicherbedarf in der Spitze steckt
+  try { out.diagnose = String((await rpc('Script.Eval', { id: s.id, code: 'info()' })).result); }
+  catch (e) { out.diagnose = 'nicht lesbar: ' + e.message; }
 
   // 6. Prüfen
   const st = await rpc('Script.GetStatus', { id: s.id });
@@ -188,12 +192,9 @@ async function deployShelly(base, code, log, opt) {
     out.wetter = d.time.length === 3 ? 'ok ' + d.time[2] + ': ET0 ' + d.et0_fao_evapotranspiration[1] + ' mm gestern' : 'Format falsch';
   } catch (e) { out.wetter = 'FEHLER ' + e.message; }
   step('Wetterdienst vom Gerät: ' + out.wetter);
-  // IP-Ortung vom Gerät (GeoJS): bei ORT "auto" der Ort, sonst die tägliche Gegenprobe und ein zweiter Weg zur Uhrzeit
-  try {
-    const g = JSON.parse((await rpc('HTTP.GET', { url: 'https://get.geojs.io/v1/ip/geo.json', timeout: 15 })).body);
-    out.ipOrt = 'ok ' + (g.city || '?') + ' (' + g.latitude + ', ' + g.longitude + ', ±' + g.accuracy + ' km)';
-  } catch (e) { out.ipOrt = 'nicht erreichbar (' + e.message + ')'; }
-  step('IP-Ortung vom Gerät: ' + out.ipOrt + (/^ok/.test(out.ipOrt) ? '' : ' – ohne sie fehlt nur die Ortsprüfung, außer bei ORT "auto"'));
+  step('Diagnose-Seite: ' + (base || (typeof location !== 'undefined' ? location.origin : '')) + '/script/' + s.id + '/info' +
+       (opt.pass || opt.neuesPasswort ? ' (Anmeldung: admin und Gerätepasswort)' : ''));
+  log(out.diagnose.split('\n').map((l) => '    | ' + l).join('\n'));
   if (reserve < 2048) step('WARNUNG: Speicher knapp (Reserve ' + reserve + ' Byte) – bitte melden');
 
   // 7. Sicherheit: ein offener Access Point wird abgeschaltet, aber nur, wenn der Shelly im Heim-WLAN eine Adresse

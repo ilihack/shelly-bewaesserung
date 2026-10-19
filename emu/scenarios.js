@@ -40,6 +40,12 @@ function weatherConst(et0, rain, prob, tmin) { return () => ({ et0, rain: rain |
 const hasCall = (j, m) => (j.calls || []).some(c => String(c.method).toLowerCase() === m);
 const wdJob = (w) => w.jobs.find(j => hasCall(j, 'script.start'));    // Wächter
 const upJob = (w) => w.jobs.find(j => hasCall(j, 'shelly.update'));   // Firmware-Update
+// Text, wie ihn das Skript speichert: die Gerätefassung hat UTF-8-Bytes in ihren Zeichenketten (tools/build.js)
+const devStr = (x) => (/min\.js$/.test(FILE) ? Buffer.from(x, 'utf8').toString('latin1') : x);
+function ntpNow(w) {                  // der Zeitserver stellt die Geräteuhr jetzt (sonst im Takt des Emulators)
+  const d = w.dev; w.ntp = true;
+  if (d && !d.ntpSynced) { d.ntpSynced = true; d.syncTs = Math.floor(w.t / 1000); d.clockBase = w.t; d.clockUp = w.uptime(d); }
+}
 
 const scenarios = {};
 
@@ -422,7 +428,10 @@ scenarios.S22_erststart_ohne_internet = function () {
   check('S22 ohne Internet und Anker: Einstecken gilt als 15. April 10:00', p.date === '2026-04-15' && p.hh === 10 && p.mm <= 5,
     p.date + ' ' + p.hh + ':' + p.mm);
   check('S22 Status nennt angenommene Uhrzeit', /Uhr angenommen/.test(w.vcText()), w.vcText());
-  check('S22 sofort geprüft (Einstecken = 10:00)', logHas(w, /Tagesprüfung.*ohne Internet/), logsSince(w, T(2027, 6, 1, 6, 0)).slice(-300));
+  w.runFor(6 * M);
+  const ev22 = w.logs.find(l => /Tagesprüfung/.test(l.msg)), dt22 = ev22 ? (ev22.t - w.dev.bootAt) / 1000 : -1;
+  check('S22 nach 10 min geprüft (Einstecken gilt als 10:00, so lange auf den Zeitserver gewartet)', ev22 && /ohne Internet/.test(ev22.msg) &&
+    dt22 >= 600 && dt22 <= 640, dt22 + ' s · ' + logsSince(w, T(2027, 6, 1, 6, 0)).slice(-300));
   w.press(); w.runFor(5 * M);
   check('S22 Taster geht (6 mm)', w.dev.output && w.dev.timer && Math.abs(w.dev.timer.dur - minFor(6) * 60) <= 1, JSON.stringify(w.dev.timer && w.dev.timer.dur));
   w.runFor(9 * D);                  // offline: Klimamittel April 2,0 mm/Tag, Handgabe 6 mm angerechnet
@@ -766,70 +775,88 @@ scenarios.S37_skript_neustart_bei_geschaetzter_uhr = function () {
 };
 
 // ------------------------------------------------------------------
-scenarios.S38_internet_ohne_zeitserver = function () {
-  // a) Zeitserver gesperrt (UDP 123), Wetterdienst geht: nach 6 h Stromausfall stellt die Uhrzeit aus dem Kopf der
-  //    Wetterantwort die Uhr binnen Minuten; gegossen wird zur richtigen Zeit
+scenarios.S38_nur_zeitserver = function () {
+  // Die Uhrzeit kommt nur vom Zeitserver; die Kopfzeile Date der https-Antworten zählt nicht (ohne Zeitserver scheitert
+  // https ab Firmware 2.0 ohnehin an der Zertifikatsprüfung). Hier ist er gesperrt, das Internet geht.
+  // a) 6 h Stromausfall nachts: Uhr bleibt geschätzt (Anker, nie zu früh), LED erst nach 30 min gelb; Zeitserver
+  //    zurück: Uhr echt, LED nach 30 min wieder grün, zusammen 2 LED-Schreibvorgänge
   const wx = () => ({ et0: 4.5, rain: 0, prob: 0, tmin: 10, tmax: 28 });
   const w = mkWorld(T(2027, 6, 1, 0, 0), { weather: wx });
-  w.run(T(2027, 6, 4, 1, 0)); w.ntp = false; w.powerFail(6 * H);
-  w.run(T(2027, 6, 4, 7, 20));
-  check('S38 Zeitserver gesperrt: Uhr binnen 20 min aus dem Wetterdienst gestellt', logHas(w, /Uhr aus Internet-Antwort gestellt/) &&
-    Math.abs(w.devUnix() - w.t / 1000) < 5 && !/Uhr geschätzt/.test(w.vcText()), w.vcText() + ' ' + (w.devUnix() - w.t / 1000));
-  w.run(T(2027, 6, 6, 23, 0));
+  w.run(T(2027, 6, 4, 1, 0)); const l0 = w.ledWrites.length;
+  w.ntp = false; w.powerFail(6 * H);
+  w.run(T(2027, 6, 4, 7, 25));
+  const frueh = ledOf(w);
+  w.run(T(2027, 6, 4, 7, 40));
+  check('S38 Zeitserver gesperrt: Uhr geschätzt (nachgehend), LED erst nach 30 min gelb', /Uhr geschätzt/.test(w.vcText()) &&
+    frueh === '[0,100,0]' && ledOf(w) === '[100,70,0]' && w.devUnix() < w.t / 1000 - 3600,
+    frueh + ' ' + ledOf(w) + ' ' + w.vcText() + ' ' + (w.devUnix() - w.t / 1000));
+  w.run(T(2027, 6, 4, 23, 0));
   const r = w.runs().filter(x => x.on > T(2027, 6, 4, 7, 0));
-  check('S38 danach um 10:00 gegossen', r.length >= 1 && r.every(x => berlinParts(x.on).hh === 10), runsInfo(w));
-  // b) Schätzung schon genau (Stromausfall 20 s, Anker frisch): bestätigt statt gestellt
-  const w2 = mkWorld(T(2027, 6, 1, 0, 0), { weather: wx });
-  w2.run(T(2027, 6, 2, 8, 0)); w2.ntp = false;
-  const st = JSON.parse(w2.storage.s); st.t = Math.floor(w2.t / 1000); w2.storage.s = JSON.stringify(st);
-  const t2 = w2.t; w2.powerFail(20e3); w2.runFor(20 * M);
-  const l2 = w2.logs.filter(l => l.t >= t2).map(l => l.msg).join('|');   // beim Erststart stellt die Ortssuche die Uhr
-  check('S38b genaue Schätzung: vom Wetterdienst bestätigt', /Uhr von Internet-Antwort bestätigt/.test(l2) && !/aus Internet-Antwort gestellt/.test(l2) &&
-    !/Uhr geschätzt/.test(w2.vcText()) && w2.state().ce === 0, w2.vcText());
-  // c) Antwort ohne Uhrzeit im Kopf: die Uhr bleibt geschätzt und wird am Tagesgang gestellt
-  const w3 = mkWorld(T(2027, 6, 1, 0, 0), { weather: wx });
-  w3.run(T(2027, 6, 4, 1, 0)); w3.ntp = false; w3.httpDate = false; w3.powerFail(6 * H);
-  w3.run(T(2027, 6, 4, 12, 0));
-  check('S38c ohne Uhrzeit im Kopf: „Uhr geschätzt“', /Uhr geschätzt/.test(w3.vcText()), w3.vcText());
-  w3.run(T(2027, 6, 8, 0, 0));
-  const fix = w3.logs.filter(l => /Uhr nach Tagesgang/.test(l.msg));
-  check('S38c Uhr trotzdem am Tagesgang gestellt', fix.length >= 1, logsSince(w3, T(2027, 6, 4, 0, 0)).slice(-300));
-  // d) Firmware meldet eine per Sys.SetTime gestellte Zeit nicht (unixtime bleibt leer): das Skript rechnet selbst richtig
+  check('S38 mit geschätzter Uhr nie vor 10:00 gegossen', r.every(x => berlinParts(x.on).hh >= 10), runsInfo(w));
+  w.ntp = true; w.runFor(3 * M);
+  check('S38 Zeitserver zurück: Uhr echt', !/Uhr geschätzt/.test(w.vcText()) && Math.abs(w.devUnix() - w.t / 1000) < 5 &&
+    w.state().ce === 0, w.vcText());
+  w.runFor(35 * M);
+  check('S38 LED wieder grün, zusammen 2 LED-Schreibvorgänge', ledOf(w) === '[0,100,0]' && w.ledWrites.length - l0 === 2,
+    ledOf(w) + ' ' + (w.ledWrites.length - l0));
+  w.run(T(2027, 6, 7, 23, 0));
+  const r2 = w.runs().filter(x => x.on > T(2027, 6, 5, 0, 0));
+  check('S38 danach um 10:00 gegossen', r2.length >= 1 && r2.every(x => berlinParts(x.on).hh === 10), runsInfo(w));
+  // b) die Firmware meldet eine per Sys.SetTime gestellte Zeit nicht (unixtime bleibt leer): das Skript rechnet mit
+  //    seiner Schätzung weiter, gießt nie zu früh; mit dem Zeitserver ist die Uhr echt
   const w4 = mkWorld(T(2027, 6, 1, 0, 0), { weather: wx });
   w4.run(T(2027, 6, 4, 1, 0)); w4.ntp = false; w4.setTimeIgnored = true; w4.powerFail(6 * H);
-  w4.run(T(2027, 6, 6, 23, 0));
+  w4.run(T(2027, 6, 5, 6, 0));
   const r4 = w4.runs().filter(x => x.on > T(2027, 6, 4, 7, 0));
-  check('S38d gestellte Zeit nicht gemeldet: trotzdem um 10:00 gegossen, Uhr echt', w4.dev.clockBase === null && r4.length >= 1 &&
-    r4.every(x => berlinParts(x.on).hh === 10) && !/Uhr geschätzt/.test(w4.vcText()) &&
-    w4.logs.filter(l => l.t > T(2027, 6, 4, 1, 0) && /Uhr aus Internet-Antwort gestellt/.test(l.msg)).length === 1, runsInfo(w4) + ' / ' + w4.vcText());
-  // e) Neustart um 22:00, der Zeitanker sagt 10:00; die Antwort des Tagesabrufs kommt vor der des Verbindungstests:
-  //    sie stellt die Uhr und wird verworfen, mit der echten Uhr ist 12:30 vorbei -> heute kein Lauf, morgen um 10:00
-  const isProbe = (url) => url.indexOf('daily=temperature_2m_min&timezone') > 0;
-  const w5 = learnedWorld(T(2027, 6, 4, 22, 0), wx);
-  w5.storage.s = JSON.stringify(Object.assign(JSON.parse(w5.storage.s), { t: Math.floor(T(2027, 6, 4, 10, 0) / 1000), tu: 1e7, ce: 1,
-    ev: dayNo(T(2027, 6, 3, 12)), dp: dayNo(T(2027, 6, 3, 12)), d: 14 }));
-  w5.ntp = false; w5.httpLat = (url) => (isProbe(url) ? 20000 : 400);
-  w5.powerFail(1000); w5.run(T(2027, 6, 5, 12, 0));
-  const r5 = w5.runs(), p5 = berlinParts(r5[0] ? r5[0].on : 0);
-  check('S38e Tagesabruf vor dem Verbindungstest: kein Lauf um 22:00, am Morgen um 10:00', r5.length === 1 && p5.d === 5 && p5.hh === 10 &&
-    logHas(w5, /Uhr aus Internet-Antwort gestellt/), runsInfo(w5) + ' / ' + logsSince(w5, T(2027, 6, 4, 21, 59)).split('\n').slice(0, 12).join(' | '));
-  // f) Erststart ohne Internet und Zeitserver: Einstecken gilt als 15. April 10:00 (echt 20. April 07:02). Drei Tage
-  //    später kommt das Internet zurück, der Zeitserver nicht, der Verbindungstest scheitert; die erste Uhrzeit bringt
-  //    der Tagesabruf. Das Konto muss danach stimmen wie Tag für Tag gerechnet.
+  const gesch = /Uhr geschätzt/.test(w4.vcText()) && w4.dev.clockBase === null;
+  w4.ntp = true; w4.run(T(2027, 6, 7, 23, 0));
+  const r4b = w4.runs().filter(x => x.on > T(2027, 6, 5, 7, 0));
+  check('S38b gestellte Zeit nicht gemeldet: Schätzung im Skript, nie vor 10:00; mit Zeitserver um 10:00', gesch &&
+    r4.every(x => berlinParts(x.on).hh >= 10) && r4b.length >= 1 && r4b.every(x => berlinParts(x.on).hh === 10) &&
+    !/Uhr geschätzt/.test(w4.vcText()), runsInfo(w4) + ' / ' + w4.vcText());
+  // c) Erststart ohne Zeitserver, Internet da: Einstecken gilt als 15. April 10:00 (echt 20. April 07:00). Wetterantworten
+  //    tragen ein anderes Datum und werden nicht verbucht (geschätzt wie ohne Internet). Drei Tage später kommt der
+  //    Zeitserver: Tagesmarken verschoben, das Konto stimmt danach wie Tag für Tag gerechnet
   const w6 = mkWorld(T(2026, 4, 20, 7, 0), { weather: () => ({ et0: 3.0, rain: 0, prob: 0, tmin: 10, tmax: 22 }) });
   w6.storage = { s: JSON.stringify({ v: 1, la: 49.48, lo: 8.45, pz: 'DELudwigshafen am Rhein', pn: 1320, ln: 3 }) };
-  w6.ntp = false; w6.internet = false; w6.powerFail(1000);
-  w6.run(T(2026, 4, 23, 6, 0)); w6.internet = true; w6.httpCode = (url) => (isProbe(url) ? 503 : 200);
-  w6.run(T(2026, 4, 24, 11, 0));
+  w6.ntp = false; w6.powerFail(1000);
+  w6.run(T(2026, 4, 23, 6, 0));
+  const vor = w6.logs.filter(l => /Tagesprüfung/.test(l.msg)).map(l => l.msg);
+  w6.ntp = true; w6.run(T(2026, 4, 24, 11, 0));
   const g6 = {};
-  for (const r of w6.runs()) { const k = berlinParts(r.on).date; g6[k] = (g6[k] || 0) + (r.min || 0) / 60 * RATE; }
+  for (const x of w6.runs()) { const k = berlinParts(x.on).date; g6[k] = (g6[k] || 0) + (x.min || 0) / 60 * RATE; }
   let d6 = 0;
   for (const ds of ['2026-04-20', '2026-04-21', '2026-04-22', '2026-04-23']) d6 = Math.min(25, Math.max(0, d6 - (g6[ds] || 0)) + 3.0 * 0.85);
   const e6 = w6.logs.filter(l => /Tagesprüfung/.test(l.msg) && berlinParts(l.t).date === '2026-04-24').map(l => l.msg);
   const v6 = e6.length ? +(/Defizit ([\d.]+) mm/.exec(e6[e6.length - 1]) || [0, -9])[1] : -9;
-  check('S38f angenommenes Datum, Uhr aus dem Tagesabruf: Konto wie Tag für Tag gerechnet', logHas(w6, /Tagesmarken um 5 Tage verschoben/) &&
-    Math.abs(v6 - d6) <= 0.15, e6.join(' | ') + ' / unabhängig ' + d6.toFixed(2) + ' / ' + runsInfo(w6));
-  common(w, 'S38'); common(w2, 'S38b'); common(w3, 'S38c'); common(w4, 'S38d'); common(w5, 'S38e'); common(w6, 'S38f');
+  const i6 = w6.endpoint('info').body;
+  check('S38c angenommenes Datum: Wetter mit anderem Datum nicht verbucht; Zeitserver: Konto wie Tag für Tag gerechnet',
+    vor.length >= 2 && vor.every(m => /ohne Internet/.test(m)) && logHas(w6, /Tagesmarken um 5 Tage verschoben/) &&
+    Math.abs(v6 - d6) <= 0.15, vor.join(' | ') + ' // ' + e6.join(' | ') + ' / unabhängig ' + d6.toFixed(2) + ' / ' + runsInfo(w6));
+  check('S38c Diagnose danach mit echtem Datum: Saison seit dem Einstecken (20.04.)', /\nSaison seit 20\.04\.:/.test(i6), i6.split('\n')[6]);
+  // d) Stromausfall bis 22:00, der Zeitanker sagt 10:00; WLAN und Zeitserver kommen erst 4 min nach dem Hochfahren
+  //    (der Router bootet): die Tagesprüfung wartet auf den Zeitserver, heute kein Lauf mehr, morgen um 10:00
+  const w5 = learnedWorld(T(2027, 6, 4, 22, 0), wx);
+  w5.storage.s = JSON.stringify(Object.assign(JSON.parse(w5.storage.s), { t: Math.floor(T(2027, 6, 4, 10, 0) / 1000), tu: 1e7, ce: 1,
+    ev: dayNo(T(2027, 6, 3, 12)), dp: dayNo(T(2027, 6, 3, 12)), d: 14 }));
+  w5.internet = false; w5.powerFail(1000); w5.after(1000 + 4 * M, () => { w5.internet = true; });
+  w5.run(T(2027, 6, 5, 12, 0));
+  const r5 = w5.runs(), p5 = berlinParts(r5[0] ? r5[0].on : 0);
+  check('S38d Zeitanker 10:00, echt 22:00, Router braucht 4 min: kein Lauf am Abend, am Morgen um 10:00', r5.length === 1 &&
+    p5.d === 5 && p5.hh === 10, runsInfo(w5) + ' / ' + logsSince(w5, T(2027, 6, 4, 21, 59)).split('\n').slice(0, 12).join(' | '));
+  // e) Störung beim Anlauf um 10:00, Nachlauf für 10:06 gespeichert; gleich danach 12 h Stromausfall, der Router braucht
+  //    8 min: auch der gespeicherte Nachlauf wartet auf den Zeitserver, also kein Lauf in der Nacht
+  const w7 = learnedWorld(T(2027, 6, 1, 6, 30), wx);
+  w7.storage.s = JSON.stringify(Object.assign(JSON.parse(w7.storage.s), { dp: dayNo(T(2027, 5, 31, 12)), d: 14 }));
+  w7.powerFail(1000); w7.run(T(2027, 6, 1, 9, 59)); w7.pump.mode = 'noload';
+  w7.run(T(2027, 6, 1, 10, 1)); w7.pump.mode = 'normal'; w7.run(T(2027, 6, 1, 10, 2) + 30e3);
+  const rt7 = w7.state().rt;
+  w7.internet = false; w7.powerFail(12 * H); w7.after(12 * H + 8 * M, () => { w7.internet = true; });
+  w7.run(T(2027, 6, 2, 9, 0));
+  const nacht = w7.runs().filter(x => x.on > T(2027, 6, 1, 12, 0));
+  check('S38e gespeicherter Nachlauf nach Stromausfall: wartet auf den Zeitserver, kein Lauf in der Nacht', rt7 > 0 && nacht.length === 0,
+    'rt=' + (rt7 ? lt(w7, rt7 * 1000) : '-') + ' · ' + runsInfo(w7));
+  common(w, 'S38'); common(w4, 'S38b'); common(w6, 'S38c'); common(w5, 'S38d'); common(w7, 'S38e');
   return { runs: runsInfo(w) };
 };
 
@@ -892,23 +919,23 @@ scenarios.S41_ort_einstellen = function () {
     /min\.js$/.test(FILE) ? '"M\\xC3\\xBCnchen"' : '"M\u00fcnchen"') });   // Gerätefassung: UTF-8-Bytes wie tools/build.js
   w2.run(T(2027, 6, 1, 7, 0));
   check('S41b Umlaut im Ortsnamen', w2.state().la === 48.14 && w2.http.some(h => /name=M%C3%BCnchen/.test(h.url)), w2.http.map(h => h.url).join(' '));
-  // c) unbekannter Ortsname: Rückfall auf die IP-Ortung, gegossen mit echtem Wetter; Status und LED (gelb) zeigen es
+  // c) unbekannter Ortsname: ohne Ort kein Wetter; gegossen wird wie ohne Internet, Status und LED (gelb) nennen den Namen
   const w3 = learnedWorld(T(2027, 6, 1, 6, 30), weatherConst(4.5));
   w3.code = CODE.replace('"Ludwigshafen am Rhein"', '"Nirgendwo"');
   w3.storage.s = JSON.stringify(Object.assign(JSON.parse(w3.storage.s), { dp: dayNo(T(2027, 5, 31, 12)), d: 14 }));
   w3.powerFail(1000); w3.run(T(2027, 6, 1, 13, 0));
   const ev3 = w3.logs.filter(l => /Tagesprüfung/.test(l.msg)).map(l => l.msg).join(' | '), st3 = w3.state();
-  check('S41c unbekannter Ortsname: Ort per IP, gegossen mit Wetterdaten', st3.lf === 1 && st3.la === 49.49 && st3.lo === 8.47 &&
-    !/ohne Internet/.test(ev3) && w3.runs().length === 1, ev3 + ' ' + JSON.stringify(st3));
-  check('S41c Status und LED: Ort nicht gefunden', /Nirgendwo nicht gefunden, Ort per IP: Mannheim/.test(w3.vcText()) &&
-    JSON.stringify(w3.plugsUi.leds.colors['switch:0'].off.rgb) === '[100,70,0]', w3.vcText());
+  check('S41c unbekannter Ortsname: ohne Wetterabruf gegossen', st3.la === null && /ohne Internet/.test(ev3) && w3.runs().length === 1 &&
+    !w3.http.some(h => /past_days/.test(h.url)), ev3 + ' ' + JSON.stringify(st3));
+  check('S41c Status und LED: Ort nicht gefunden, kein „ohne Internet“', /Ort Nirgendwo nicht gefunden/.test(w3.vcText()) &&
+    !/ohne Internet/.test(w3.vcText()) && ledOf(w3) === '[100,70,0]', w3.vcText());
   // d) Koordinaten eingetragen: keine Abfrage
   const c4 = CODE.replace('LAT: null, LON: null', 'LAT: 49.51, LON: 8.55')            // Quelltext
     .replace(/("Ludwigshafen am Rhein",[\w$]+:"DE",[\w$]+:)null,([\w$]+:)null/, '$149.51,$28.55'); // Gerätefassung
   const w4 = mkWorld(T(2027, 6, 1, 6, 30), { weather: weatherConst(4.5), code: c4 });
   w4.run(T(2027, 6, 1, 10, 30));
-  check('S41d Koordinaten eingetragen: weder Ortssuche noch IP-Ortung, kein Hinweis, LED grün',
-    !w4.http.some(h => /geocoding|geojs/.test(h.url)) && w4.http.some(h => /latitude=49\.51&longitude=8\.55/.test(h.url)) &&
+  check('S41d Koordinaten eingetragen: keine Ortssuche, kein Hinweis, LED grün',
+    !w4.http.some(h => /geocoding/.test(h.url)) && w4.http.some(h => /latitude=49\.51&longitude=8\.55/.test(h.url)) &&
     !/Ort/.test(w4.vcText()) && JSON.stringify(w4.plugsUi.leds.colors['switch:0'].off.rgb) === '[0,100,0]',
     w4.vcText() + ' ' + w4.http.map(h => h.url).join(' '));
   common(w, 'S41'); common(w2, 'S41b'); common(w3, 'S41c'); common(w4, 'S41d');
@@ -1209,41 +1236,86 @@ scenarios.S53_bedienfeld_spaet = function () {
 };
 
 // ------------------------------------------------------------------
-scenarios.S54_ort_per_ip = function () {
-  // Ort über die IP-Adresse (GeoJS, im Emulator Mannheim ±20 km) und tägliche Gegenprobe des Ortsnamens
-  const led = (x) => JSON.stringify(x.plugsUi.leds.colors['switch:0'].off.rgb);
-  const fresh = (code) => mkWorld(T(2027, 6, 1, 6, 30), { weather: weatherConst(4.5), code });
-  const auto = CODE.replace('"Ludwigshafen am Rhein"', '"auto"');
-  // a) ORT "auto": Ort aus der IP-Ortung, gespeichert, kein Hinweis, LED grün
-  const w = fresh(auto);
-  w.run(T(2027, 6, 1, 9, 0));
-  const st = w.state();
-  check('S54 ORT auto: Ort per IP gespeichert, Wetter dafür, keine Ortssuche', st.la === 49.49 && st.lo === 8.47 && st.lc === 'Mannheim' &&
-    w.http.some(h => /latitude=49\.49&longitude=8\.47/.test(h.url)) && !w.http.some(h => /geocoding/.test(h.url)), JSON.stringify(st));
-  check('S54 ORT auto: kein Hinweis, LED grün', !/Ort/.test(w.vcText()) && led(w) === '[0,100,0]', w.vcText() + ' ' + led(w));
-  // b) Ortsname 273 km von der IP-Ortung (München, IP in Mannheim): der Name gilt, „Ort prüfen“, LED gelb
-  const w2 = fresh(CODE.replace('"Ludwigshafen am Rhein"', /min\.js$/.test(FILE) ? '"M\\xC3\\xBCnchen"' : '"M\u00fcnchen"'));
-  w2.run(T(2027, 6, 1, 9, 0));
-  check('S54b Name weit von der IP-Ortung: Name gilt, „Ort prüfen“, LED gelb', w2.state().la === 48.14 &&
-    /Ort prüfen: M.+nchen liegt 2\d\d km von der IP-Ortung \(Mannheim\)/.test(w2.vcText()) && led(w2) === '[100,70,0]', w2.vcText());
-  // c) IP-Ortung gestört: der Name gilt ohne Gegenprobe, kein Hinweis, LED grün
-  const w3 = fresh(CODE); w3.ipGeo = null;
-  w3.run(T(2027, 6, 1, 9, 0));
-  check('S54c IP-Ortung gestört: Ort aus dem Namen, kein Hinweis, LED grün', w3.state().la === 49.48 && !/Ort/.test(w3.vcText()) &&
-    led(w3) === '[0,100,0]', w3.vcText() + ' ' + led(w3));
-  // d) ORT auto, die IP-Ortung kennt nur das Land: Hinweis, LED gelb
-  const w4 = fresh(auto);
-  w4.ipGeo = { latitude: '51.2993', longitude: '9.491', accuracy: 1000, city: '' };
-  w4.run(T(2027, 6, 1, 9, 0));
-  check('S54d ORT auto, IP nur auf das Land genau: Hinweis, LED gelb', /Ort per IP ungenau \(±1000 km\)/.test(w4.vcText()) &&
-    led(w4) === '[100,70,0]', w4.vcText());
-  // e) ORT auto, IP-Ortung erst gestört: „Ort unbekannt“, LED gelb; danach gefunden, LED grün
-  const w5 = fresh(auto); w5.ipGeo = null;
-  w5.run(T(2027, 6, 1, 8, 0));
-  const vorher = /Ort unbekannt/.test(w5.vcText()) && led(w5) === '[100,70,0]';
-  w5.ipGeo = undefined; w5.run(T(2027, 6, 1, 9, 0));
-  check('S54e ORT auto, IP erst gestört: Ort unbekannt, dann gefunden', vorher && w5.state().la === 49.49 && led(w5) === '[0,100,0]', w5.vcText());
-  common(w, 'S54'); common(w2, 'S54b'); common(w3, 'S54c'); common(w4, 'S54d'); common(w5, 'S54e');
+scenarios.S54_diagnose = function () {
+  // Diagnose-Seite http://<IP>/script/<id>/info (hinter dem Gerätepasswort): letzte Störung, Saison, Ausfälle, Uhr,
+  // Schreibvorgänge, letzte Meldungen. Sie entsteht erst beim Aufruf und schreibt nichts.
+  const w = learnedWorld(T(2027, 6, 1, 6, 30));
+  w.storage.s = JSON.stringify(Object.assign(JSON.parse(w.storage.s), { dp: dayNo(T(2027, 5, 31, 12)), d: 14 }));
+  w.powerFail(1000); w.run(T(2027, 6, 1, 10, 10));
+  w.pump.mode = 'dry'; w.runFor(2 * M); w.pump.mode = 'normal';      // Trockenlauf 10:10, Nachlauf 11:10
+  w.run(T(2027, 6, 1, 13, 0));
+  let p = w.endpoint('info'), maxB = Buffer.byteLength(p.body);
+  check('S54 Seite: Text in UTF-8, Uhrzeit, LED wechselt erst nach 30 min auf grün', p.code === 200 && p.sent &&
+    JSON.stringify(p.headers) === '[["Content-Type","text/plain; charset=utf-8"]]' && /^Bewässerung 01\.06\.2027 13:00\n/.test(p.body) &&
+    /\nLED: violett, wechselt bald auf grün – alles in Ordnung\n/.test(p.body), p.body);
+  w.run(T(2027, 6, 1, 13, 30)); p = w.endpoint('info'); maxB = Math.max(maxB, Buffer.byteLength(p.body));
+  check('S54 letzte Störung erledigt, Saison gezählt, letzte Meldungen neueste zuerst', /\nLED: grün – alles in Ordnung\n/.test(p.body) &&
+    /\nLetzte Störung: 01\.06\.2027 10:1\d Trockenlauf oder Hahn zu \(\d+ W < 990 W\) \(erledigt\)\n/.test(p.body) &&
+    /\nSaison seit 01\.06\.: Automatik 2, Hand 0, zusammen 1\d(,\d)? mm, Störungen 1\n/.test(p.body) &&
+    /\nLetzte Meldungen:\n01\.06\. 1[23]:\d\d Pumpe aus: Ende\/Stopp/.test(p.body) && /Flash-Schreibvorgänge seit Skriptstart: Speicher \d+, Einstellungen \d+, LED [23]\n/.test(p.body), p.body);
+  // b) nach einem Stromausfall: Störung und Saison bleiben (gespeichert), Neustart sichtbar, Meldungen neu (nur RAM)
+  w.powerFail(10 * M); w.runFor(15 * M);
+  p = w.endpoint('info'); maxB = Math.max(maxB, Buffer.byteLength(p.body));
+  check('S54b nach Stromausfall: Störung und Saison erhalten, Neustart mit letztem Stand davor', /Letzte Störung: 01\.06\.2027 10:1\d Trockenlauf/.test(p.body) &&
+    /Automatik 2, Hand 0/.test(p.body) && /\nGerät: Firmware 1\.7\.1, an seit 01\.06\.2027 13:40 \(5 min\), davor zuletzt gespeichert 01\.06\.2027 1[23]:\d\d; Skript läuft seit 5 min\n/.test(p.body) &&
+    /gestartet, Bodenkonto/.test(p.body) && !/Pumpe/.test(p.body.split('Letzte Meldungen:')[1]), p.body);
+  // c) Wetterdienst einen Vormittag weg: Beginn und Dauer des letzten Ausfalls
+  w.httpCode = (url) => (w.t < T(2027, 6, 2, 12, 0) && /past_days|temperature_2m_min&timezone/.test(url) ? 503 : 200);
+  w.run(T(2027, 6, 2, 11, 30)); const off = w.endpoint('info').body;
+  w.run(T(2027, 6, 2, 14, 0)); p = w.endpoint('info'); maxB = Math.max(maxB, Buffer.byteLength(off), Buffer.byteLength(p.body));
+  check('S54c Internetausfall ab dem ersten gescheiterten Versuch: währenddessen „fehlt seit“, danach Beginn und Dauer',
+    /\nInternet: Wetterdienst fehlt seit 02\.06\.2027 10:0\d\n/.test(off) && /\nInternet: ok, letzter Ausfall 02\.06\.2027 10:0\d, 2 h\n/.test(p.body),
+    off.split('\n')[9] + ' / ' + p.body.split('\n')[9]);
+  // d) Aufrufe ändern nichts: 100 Aufrufe, kein Schreibvorgang, Zustand gleich
+  const s0 = JSON.stringify(w.state()), n0 = w.storageWrites.length + w.cfgCallT.length + w.ledWrites.length;
+  for (let i = 0; i < 100; i++) w.endpoint('info');
+  w.runFor(2 * M);
+  check('S54d 100 Aufrufe: nichts geschrieben, Zustand gleich', JSON.stringify(w.state()) === s0 &&
+    w.storageWrites.length + w.cfgCallT.length + w.ledWrites.length === n0, s0 + ' / ' + JSON.stringify(w.state()));
+  // e) neue Saison: die erste Prüfung im März setzt die Zähler zurück
+  const w2 = learnedWorld(T(2028, 3, 1, 6, 30));
+  w2.storage.s = JSON.stringify(Object.assign(JSON.parse(w2.storage.s), { ev: dayNo(T(2028, 2, 29, 12)), dp: dayNo(T(2028, 2, 28, 12)),
+    s0: dayNo(T(2027, 3, 1, 12)), sa: 61, sh: 9, sm: 702.5, sf: 3, fu: Math.floor(T(2027, 8, 3, 10, 2) / 1000), fo: 0,
+    ft: devStr('Überlast (1800 W > 1716 W)') }));
+  w2.powerFail(1000); w2.run(T(2028, 3, 1, 9, 0));
+  const alt = w2.endpoint('info').body;
+  w2.run(T(2028, 3, 1, 10, 30));
+  const neu = w2.endpoint('info').body;
+  check('S54e erste Prüfung im März: Saison neu gezählt, letzte Störung bleibt', /Saison seit 01\.03\.: Automatik 61, Hand 9, zusammen 702,5 mm, Störungen 3/.test(alt) &&
+    /Saison seit 01\.03\.: Automatik 0, Hand 0, zusammen 0 mm, Störungen 0/.test(neu) && /Letzte Störung: 03\.08\.2027 10:02 Überlast/.test(neu),
+    alt.split('\n')[6] + ' / ' + neu.split('\n')[6]);
+  // g) Strom 6 h weg, Internet auch: der Ausfall beginnt mit geschätzter Uhr (Prüfung um 10:00 nach der Ankeruhr), der
+  //    Zeitserver stellt die Uhr vor der Rückkehr des Wetterdienstes: Beginn und Dauer stimmen in echter Zeit
+  const w4 = learnedWorld(T(2027, 6, 1, 6, 30));
+  w4.storage.s = JSON.stringify(Object.assign(JSON.parse(w4.storage.s), { dp: dayNo(T(2027, 5, 31, 12)), d: 4 }));
+  w4.powerFail(1000); w4.run(T(2027, 6, 2, 1, 0)); w4.internet = false; w4.powerFail(6 * H);   // Anker 22:00: Uhr 9 h nach
+  w4.run(T(2027, 6, 2, 20, 30));
+  const fail = w4.logs.find(l => l.t > T(2027, 6, 2, 1, 0) && /Tagesprüfung.*ohne Internet/.test(l.msg));
+  w4.internet = true; w4.run(T(2027, 6, 2, 21, 30));
+  const back = w4.logs.length, st4 = w4.state(), i4 = w4.endpoint('info').body;
+  const sollD = fail ? (T(2027, 6, 2, 20, 30) - fail.t) / M : -1;
+  check('S54g Ausfall bei geschätzter Uhr: Beginn und Dauer in echter Zeit', !!fail && Math.abs(st4.io * 1000 - fail.t) < 2 * M &&
+    st4.id >= sollD && st4.id <= sollD + 20, (fail ? lt(w4, fail.t) : '-') + ' io=' + lt(w4, st4.io * 1000) + ' id=' + st4.id + ' soll≥' +
+    Math.round(sollD) + ' · ' + i4.split('\n')[9] + ' ' + back);
+  // f) Firmware ohne HTTPServer: Skript läuft ohne Diagnose-Seite weiter
+  const w3 = mkWorld(T(2027, 6, 1, 6, 0), { weather: weatherConst(4.5), noHttpServer: true });
+  w3.run(T(2027, 6, 4, 12, 0));
+  check('S54f ohne HTTPServer: gemeldet, Skript gießt normal', logHas(w3, /Diagnose-Seite fehlt/) && w3.endpoint('info').code === 404 &&
+    w3.runs().length >= 1, runsInfo(w3));
+  check('S54 Seite höchstens 2 KB', maxB <= 2048, maxB + ' Byte');
+  // h) Skript-Neustart während eines Ausfalls: der Ausfall bleibt (LED, Statuszeile, Diagnose), keine LED-Wechsel
+  const w5 = learnedWorld(T(2027, 6, 1, 6, 30));
+  w5.storage.s = JSON.stringify(Object.assign(JSON.parse(w5.storage.s), { dp: dayNo(T(2027, 5, 31, 12)), d: 4 }));
+  w5.httpCode = () => 503; w5.powerFail(1000); w5.run(T(2027, 6, 1, 14, 0));
+  const l5 = w5.ledWrites.length; w5.restartScript(); w5.run(T(2027, 6, 2, 9, 0));
+  const i5 = w5.endpoint('info').body;
+  w5.httpCode = null; w5.run(T(2027, 6, 2, 11, 0));
+  check('S54h Neustart im Ausfall: weiter „fehlt seit“, gelb ohne LED-Wechsel; Rückkehr danach erkannt',
+    /\nInternet: Wetterdienst fehlt seit 01\.06\.2027 10:0\d\n/.test(i5) && /ohne Internet/.test(w5.vcText()) === false &&
+    w5.ledWrites.length === l5 + 1 && ledOf(w5) === '[0,100,0]' && /letzter Ausfall 01\.06\.2027 10:0\d/.test(w5.endpoint('info').body),
+    i5.split('\n')[9] + ' · LED +' + (w5.ledWrites.length - l5) + ' · ' + w5.vcText());
+  common(w, 'S54'); common(w2, 'S54e'); common(w3, 'S54f'); common(w4, 'S54g'); common(w5, 'S54h');
+  return { bytes: maxB };
 };
 
 // ------------------------------------------------------------------
@@ -1260,7 +1332,8 @@ scenarios.S55_led_letzte_stoerung = function () {
     /Störung 01\.06\. \d\d:\d\d: Trockenlauf/.test(w.vcText()), led() + ' ' + w.vcText());
   w.pump.mode = 'normal'; w.run(T(2027, 6, 2, 12, 30));
   check('S55 nächster Lauf fehlerfrei: LED grün, Störung erledigt', led() === '[0,100,0]' && !/Störung/.test(w.vcText()) &&
-    w.state().fu === 0, led() + ' ' + w.vcText());
+    w.state().fo === 0 && /Letzte Störung: 01\.06\.2027 \d\d:\d\d Trockenlauf .*\(erledigt\)/.test(w.endpoint('info').body),
+    led() + ' ' + w.vcText());
   common(w, 'S55');
 };
 
@@ -1301,14 +1374,46 @@ scenarios.S56_schreibbremse = function () {
 };
 
 // ------------------------------------------------------------------
-scenarios.S57_uhr_ohne_ort = function () {
-  // Erststart, Zeitserver gesperrt, Ortssuche gestört: die IP-Ortung bringt die Uhrzeit, keine Annahme 15. April
-  const w = mkWorld(T(2027, 6, 1, 6, 0), { weather: weatherConst(4.5) });
-  w.ntp = false; w.httpCode = (url) => (/geocoding/.test(url) ? 503 : 200);
-  w.run(T(2027, 6, 1, 6, 10));
-  check('S57 Uhr aus der IP-Ortung, keine Annahme 15. April', logHas(w, /Uhr aus Internet-Antwort gestellt/) &&
-    !logHas(w, /Einstecken gilt als 15\. April/) && !/Uhrzeit unbekannt/.test(w.vcText()) && Math.abs(w.devUnix() - w.t / 1000) < 5, w.vcText());
-  common(w, 'S57');
+scenarios.S57_handgabe_90_min = function () {
+  // Handgabe höchstens 90 min: zweite Grenze neben der Unterlast-Erkennung, falls ein zugedrehter Hahn unerkannt bleibt.
+  // Den Timer hält die Firmware: er wirkt auch, wenn das Skript steht.
+  // a) Regenrate 5 mm/h, Defizit 20 mm: 15 mm bräuchten 180 min, die Handgabe endet nach 90 min mit 7,5 mm
+  const w = learnedWorld(T(2027, 6, 1, 13, 0));
+  w.storage.s = JSON.stringify(Object.assign(JSON.parse(w.storage.s), { dp: dayNo(T(2027, 5, 31, 12)), d: 20, ev: dayNo(T(2027, 6, 1, 12)) }));
+  w.powerFail(1000); w.runFor(2 * M); w.setVc('number:202', 5); w.runFor(30e3);
+  w.press(); w.runFor(2 * H);
+  const r = w.runs();
+  check('S57 Handgabe bei 5 mm/h: Timer 90 min statt 180, 7,5 mm gutgeschrieben', r.length === 1 && Math.abs(r[0].min - 90) < 0.2 &&
+    r[0].offSrc === 'timer' && Math.abs(w.state().pi - 7.5) < 0.1, runsInfo(w) + ' pi=' + w.state().pi);
+  // b) Skript steht während der Handgabe (Absturz): der Firmware-Timer schaltet trotzdem nach 90 min ab
+  w.press(); w.runFor(5 * M); w.stopScript(); w.runFor(2 * H);
+  const r2 = w.runs()[1];
+  check('S57b Skript steht: Firmware schaltet nach 90 min ab', r2 && Math.abs(r2.min - 90) < 0.2 && r2.offSrc === 'timer', runsInfo(w));
+  // c) kleine Handgabe bleibt, wie sie war (Defizit, mindestens 6 mm); die Automatik gibt weiter bis 15 mm (105 min)
+  const w2 = learnedWorld(T(2027, 6, 1, 6, 30));
+  w2.storage.s = JSON.stringify(Object.assign(JSON.parse(w2.storage.s), { dp: dayNo(T(2027, 5, 31, 12)), d: 20 }));
+  w2.powerFail(1000); w2.run(T(2027, 6, 1, 13, 0));
+  w2.press(); w2.runFor(2 * H);
+  const a2 = w2.runs();
+  check('S57c Automatik 15 mm in 105 min, danach Handgabe 6 mm in 42 min', a2.length === 2 && Math.abs(a2[0].min - minFor(15)) < 0.5 &&
+    Math.abs(a2[1].min - minFor(6)) < 0.5, runsInfo(w2));
+  // d) Taster, während das Skript steht (Firmware-Notabschaltung 160 min): der Wächter startet es 4 min später, es
+  //    übernimmt den Lauf als Handgabe und kürzt den Timer: aus nach 90 min ab Beginn
+  const w3 = learnedWorld(T(2027, 6, 1, 13, 0));
+  w3.powerFail(1000); w3.runFor(2 * M); w3.stopScript(); w3.runFor(M);
+  w3.press(); w3.runFor(4 * M); w3.fireSchedules(); w3.runFor(2 * H);
+  const r3 = w3.runs();
+  check('S57d Taster bei stehendem Skript: übernommen und nach 90 min ab Beginn aus', r3.length === 1 && Math.abs(r3[0].min - 90) < 0.2 &&
+    r3[0].offSrc === 'timer' && logHas(w3, /Pumpe an \(hand\)/), runsInfo(w3));
+  // e) eigener Automatiklauf 15 mm bei 6 mm/h (150 min), Skript-Neustart nach 100 min: läuft mit seinem Timer zu Ende
+  const w4 = learnedWorld(T(2027, 6, 1, 6, 30));
+  w4.storage.s = JSON.stringify(Object.assign(JSON.parse(w4.storage.s), { dp: dayNo(T(2027, 5, 31, 12)), d: 20 }));
+  w4.powerFail(1000); w4.runFor(2 * M); w4.setVc('number:202', 6);
+  w4.run(T(2027, 6, 1, 11, 40)); w4.restartScript(); w4.run(T(2027, 6, 1, 14, 0));
+  const r4 = w4.runs();
+  check('S57e eigener Automatiklauf über 90 min, Skript-Neustart nach 100 min: läuft seine 150 min', r4.length === 1 &&
+    Math.abs(r4[0].min - 150) < 0.5 && r4[0].offSrc === 'timer', runsInfo(w4));
+  common(w, 'S57'); common(w2, 'S57c'); common(w3, 'S57d'); common(w4, 'S57e');
 };
 
 scenarios.S58_einschalten_abgelehnt = function () {
@@ -1330,7 +1435,7 @@ scenarios.S58_einschalten_abgelehnt = function () {
     tries + ' Versuche · ' + w.vcText());
   w.switchRefuse = 0; w.run(T(2027, 6, 2, 13, 0));
   check('S58 am Folgetag gegossen: LED grün, Störung erledigt', w.runs().length === 1 && led() === '[0,100,0]' &&
-    !/Störung|abgelehnt/.test(w.vcText()) && w.state().fu === 0, led() + ' ' + w.vcText());
+    !/Störung|abgelehnt/.test(w.vcText()) && w.state().fo === 0, led() + ' ' + w.vcText());
   common(w, 'S58');
 };
 
@@ -1341,14 +1446,19 @@ const withLatLon = (code) => code.replace('LAT: null, LON: null', 'LAT: 49.51, L
 const ledOf = (x) => JSON.stringify(x.plugsUi.leds.colors['switch:0'].off.rgb);
 
 scenarios.S59_pruefer_uhr_und_speicher = function () {
-  // a) Erststart, Zeitserver gesperrt: der Verbindungstest stellt die Uhr, bevor die langsamere Wetterantwort kommt.
-  //    Die Antwort wird verworfen, die verschobenen Tagesmarken bleiben: kein Lauf aus falsch gebuchten Tagen
+  // a) Erststart ohne Zeitserver: Einstecken gilt als 15. April 10:00, geprüft nach 10 min. Der Zeitserver stellt die Uhr,
+  //    während der Wetterabruf läuft (Antwort erst nach dem nächsten Takt): die Antwort wird verworfen, die Tagesmarken
+  //    sind verschoben, kein Lauf aus falsch gebuchten Tagen
   const w = mkWorld(T(2027, 6, 1, 6, 0), { weather: weatherConst(4.5), code: withLatLon(CODE) });
   w.storage = {}; w.ntp = false;
-  w.httpLat = (url) => (url.indexOf('daily=temperature_2m_min&timezone') > 0 ? 300 : 1500);
+  let scharf = true;
+  w.httpLat = (url) => {
+    if (scharf && /past_days/.test(url)) { scharf = false; w.after(2000, () => ntpNow(w)); return 45000; }
+    return 400;
+  };
   w.powerFail(1000); w.run(T(2027, 6, 1, 13, 0));
-  check('S59 Uhr gestellt, während der Wetterabruf läuft: Tage richtig verschoben, kein Lauf am ersten Tag',
-    w.runs().length === 0 && w.state().dp === dayNo(T(2027, 5, 31, 12)) && w.state().df === 0,
+  check('S59 Uhr gestellt, während der Wetterabruf läuft: Antwort verworfen, Tage verschoben, kein Lauf am ersten Tag',
+    !scharf && w.runs().length === 0 && w.state().dp === dayNo(T(2027, 5, 31, 12)) && w.state().df === 0 && logHas(w, /Tagesmarken um \d+ Tage verschoben/),
     runsInfo(w) + ' dp=' + w.state().dp + ' df=' + w.state().df);
   // b) Absturzschleife ohne Internet: das Skript steht alle 5 min, der Wächter startet es neu. Ein Neustart schreibt
   //    nichts, also kommt die Tagesprüfung durch die Bremse in den Speicher: je Tag eine Gabe
@@ -1383,46 +1493,46 @@ scenarios.S60_pruefer_einstellungen = function () {
   common(w, 'S60');
 };
 
-scenarios.S61_pruefer_ort = function () {
-  // a) ORT "auto": erst nur auf das Land genau, am nächsten Tag genau: der genaue Ort ersetzt den ungenauen
-  const auto = CODE.replace('"Ludwigshafen am Rhein"', '"auto"');
-  const a = mkWorld(T(2027, 6, 1, 6, 30), { weather: weatherConst(4.5), code: auto });
-  a.ipGeo = { latitude: '51.2993', longitude: '9.491', accuracy: 1000, city: '' };
-  a.run(T(2027, 6, 1, 12, 0));
-  const gelb = ledOf(a) === '[100,70,0]';
-  a.ipGeo = undefined; a.run(T(2027, 6, 2, 12, 0));
-  const wx = a.http.filter(x => /past_days/.test(x.url)).pop();
-  check('S61 ORT auto: genauere IP-Ortung ersetzt die ungenaue, Wetter dafür, LED grün', gelb && a.state().la === 49.49 &&
-    ledOf(a) === '[0,100,0]' && /latitude=49\.49&longitude=8\.47/.test(wx.url), a.vcText() + ' ' + wx.url);
-  // b) Name nicht gefunden, danach LAT/LON eingetragen: Hinweis weg, LED grün, weder Ortssuche noch IP-Ortung
-  const c1 = CODE.replace('"Ludwigshafen am Rhein"', '"Nirgendwo"');
-  const b = mkWorld(T(2027, 6, 1, 6, 30), { weather: weatherConst(4.5), code: c1 });
-  b.run(T(2027, 6, 1, 9, 0));
-  const vorher = b.state().lf === 1;
-  b.code = withLatLon(CODE).replace('"Ludwigshafen am Rhein"', '"Nirgendwo"'); b.restartScript(); b.run(T(2027, 6, 2, 12, 0));
-  check('S61b LAT/LON nach „nicht gefunden“: Hinweis weg, LED grün, keine Abfrage', vorher && b.state().lf === 0 &&
-    ledOf(b) === '[0,100,0]' && !/Ort/.test(b.vcText()) && !b.http.some(x => x.t > T(2027, 6, 1, 9, 1) && /geojs|geocoding/.test(x.url)),
-    b.vcText());
-  // c) Ortssuche liefert einmal kein Ergebnis: Ort per IP; am nächsten Tag wird der Name nochmal gesucht und gefunden
-  const c = mkWorld(T(2027, 6, 1, 6, 30), { weather: weatherConst(4.5) });
-  const orig = c.geoBody.bind(c); let n = 0;
-  c.geoBody = (url) => (n++ === 0 ? JSON.stringify({ generationtime_ms: 0.1 }) : orig(url));
-  c.run(T(2027, 6, 1, 9, 0));
-  const perIp = c.state().lf === 1;
-  c.run(T(2027, 6, 2, 12, 0));
-  check('S61c Name einmal nicht gefunden: am nächsten Tag gilt wieder der Name', perIp && c.state().lf === 0 && c.state().la === 49.48 &&
-    ledOf(c) === '[0,100,0]', c.vcText());
-  // d) Name nicht gefunden und IP-Ortung gestört: die Statuszeile nennt den Namen, kein „ohne Internet“
-  const d = mkWorld(T(2027, 6, 1, 6, 30), { weather: weatherConst(4.5), code: c1 });
-  d.ipGeo = null; d.run(T(2027, 6, 1, 11, 0));
-  check('S61d Name nicht gefunden, IP-Ortung gestört: Status nennt den Namen', /Ort Nirgendwo nicht gefunden/.test(d.vcText()) &&
-    !/ohne Internet/.test(d.vcText()) && ledOf(d) === '[100,70,0]', d.vcText());
-  // e) Stadtname der IP-Ortung mit Umlauten: nur ASCII gespeichert und angezeigt
-  const e = mkWorld(T(2027, 6, 1, 6, 30), { weather: weatherConst(4.5), code: auto });
-  e.ipGeo = { latitude: '49.4874', longitude: '8.4660', accuracy: 20, city: 'Großröhrsdorf-Übersee' };
-  e.run(T(2027, 6, 1, 9, 0));
-  check('S61e Stadtname mit Umlauten: als ASCII', e.state().lc === 'Grossroehrsdorf-Uebersee', JSON.stringify(e.state().lc));
-  common(a, 'S61'); common(b, 'S61b'); common(c, 'S61c'); common(d, 'S61d'); common(e, 'S61e');
+scenarios.S61_led_schreibvorgaenge = function () {
+  // Jede LED-Farbe ist ein Flash-Schreibvorgang: violett nach 2 min Bestand, jede andere Farbe erst nach 30 min,
+  // höchstens 12 am Tag.
+  // a) eine Woche lang fehlt der Wetterdienst jeden Vormittag 10:00 bis 11:05: erkannt 11:00, zurück 11:15 -> keine LED-Wechsel
+  const a = learnedWorld(T(2027, 6, 1, 6, 30));
+  a.powerFail(1000); a.runFor(10 * M);
+  const a0 = a.ledWrites.length;
+  a.httpCode = (url) => { const q = berlinParts(a.t), m = q.hh * 60 + q.mm; return m >= 600 && m < 665 ? 503 : 200; };
+  a.run(T(2027, 6, 8, 23, 0));
+  const offs = a.logs.filter(l => /Tagesprüfung.*ohne Internet/.test(l.msg)).length;
+  check('S61 Wetterdienst täglich kurz weg: ohne Internet entschieden, keine LED-Wechsel', offs >= 6 && a.ledWrites.length === a0,
+    offs + ' Tage ohne Wetter, LED +' + (a.ledWrites.length - a0));
+  // b) zwei Tage weg: gelb 30 min nach dem Erkennen, grün 30 min nach der Rückkehr, zusammen 2 Wechsel
+  const b = learnedWorld(T(2027, 6, 1, 6, 30));
+  b.powerFail(1000); b.runFor(10 * M);
+  const b0 = b.ledWrites.length;
+  b.httpCode = (url) => (b.t < T(2027, 6, 3, 12, 0) ? 503 : 200);
+  b.run(T(2027, 6, 3, 15, 0));
+  const lw = b.ledWrites.slice(b0), seit = (t, x) => (t - x) / M;   // erkannt nach dem 4. Versuch um 11:00
+  check('S61b zwei Tage ohne Wetterdienst: gelb 30 min nach dem Erkennen, grün 30 bis 47 min nach der Rückkehr, 2 Wechsel',
+    lw.length === 2 && seit(lw[0], T(2027, 6, 1, 11, 0)) >= 30 && seit(lw[0], T(2027, 6, 1, 11, 0)) <= 32 &&
+    seit(lw[1], T(2027, 6, 3, 12, 0)) >= 30 && seit(lw[1], T(2027, 6, 3, 12, 0)) <= 47, lw.map(t => lt(b, t)).join(', '));
+  // c) Störung: violett binnen 3 min
+  const c = learnedWorld(T(2027, 6, 1, 14, 0));
+  c.powerFail(1000); c.runFor(10 * M);
+  c.pump.mode = 'dry'; c.press(); c.runFor(10 * M); c.pump.mode = 'normal';
+  const trip = c.relay.filter(x => !x.on).pop(), vi = c.ledWrites[c.ledWrites.length - 1];
+  check('S61c Störung: violett binnen 3 min', ledOf(c) === '[100,0,100]' && vi - trip.t <= 3 * M, ((vi - trip.t) / 1000) + ' s');
+  // d) Störung und fehlerfreier Lauf wechseln den ganzen Tag (Handgaben alle 35 min): höchstens 12 LED-Wechsel am Tag
+  const d = learnedWorld(T(2027, 6, 1, 14, 0));
+  d.powerFail(1000); d.runFor(10 * M);
+  const d0 = d.ledWrites.length, td = d.t;
+  for (let k = 0; d.t < td + 24 * H; k++) {
+    d.pump.mode = k % 2 ? 'normal' : 'dry'; d.press(); d.runFor(2 * M);
+    if (d.dev.output) d.press();          // fehlerfreier Lauf: nach 2 min von Hand gestoppt
+    d.runFor(33 * M);
+  }
+  const nd = d.ledWrites.filter(t => t < d.ledWrites[0] + 24 * H).length;   // ab dem ersten Setzen beim Start
+  check('S61d Störung und fehlerfreier Lauf im Wechsel: höchstens 12 LED-Wechsel am Tag', nd === 12 && d0 === 1, nd + ' Wechsel');
+  common(a, 'S61'); common(b, 'S61b'); common(c, 'S61c'); common(d, 'S61d');
 };
 
 scenarios.S62_pruefer_rest = function () {

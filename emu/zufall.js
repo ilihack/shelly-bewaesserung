@@ -6,7 +6,8 @@
  * Wetterantworten, Pumpe trocken/Hahn zu/blockiert/Luft/ohne Last/Abschaltung beim Anlauf, Tastendruck, Bedienfeld-Werte, Skript-Neustart
  * und -Absturz (der Wächter startet neu). Wetter zufällig, auch Frost und Starkregen.
  * Regeln: kein Absturz, Grenzen der Firmware, Statustext <= 255 Byte, Speicher gültig und <= 1024 Byte,
- * Konto 0..25 mm, kein Lauf länger als 161 min; bei richtiger Uhr: Automatik nur 10:00 bis 12:30, nicht bei
+ * Konto 0..25 mm, kein Lauf länger als 161 min, eine vom Skript gesehene Handgabe höchstens 90 min, LED höchstens
+ * 12 Wechsel in 24 h (je Skriptstart einer mehr); bei richtiger Uhr: Automatik nur 10:00 bis 12:30, nicht bei
  * Automatik aus, Pause oder Winterpause.
  */
 const fs = require('fs');
@@ -87,6 +88,28 @@ function lauf(seed) {
   if (w.limits.timers > 5 || w.limits.rpc > 5 || w.limits.handlers > 5) fehler.push('Grenzen: ' + JSON.stringify(w.limits));
   if ((w.maxText || 0) > 255) fehler.push('Statustext ' + w.maxText + ' Byte');
   for (const x of w.runs()) if (x.min > 161) fehler.push('Lauf ' + x.min.toFixed(0) + ' min');
+  // Handgabe: höchstens 90 min ab Beginn, wenn das Skript sie beim Einschalten sah (Firmware-Timer). Stand das Skript,
+  // übernimmt sie der nächste Skriptstart und kürzt sie auf 90 min ab Beginn, oder schaltet gleich ab, wenn die um sind
+  const handAn = w.logs.filter((l) => /Pumpe an \(hand\)/.test(l.msg)).map((l) => l.t);
+  const starts0 = w.logs.filter((l) => /gestartet, Bodenkonto/.test(l.msg)).map((l) => l.t);
+  for (const x of w.runs()) {
+    if (x.src !== 'button' || !x.off) continue;
+    const gesehen = handAn.some((t) => Math.abs(t - x.on) <= 2000), st1 = starts0.find((t) => t > x.on + 2000);
+    let grenze;
+    if (gesehen) grenze = 90.5;
+    else if (st1 !== undefined && st1 < x.off) grenze = Math.max(90.5, (st1 - x.on) / M + 0.5);
+    else continue;                        // während des ganzen Laufs kein Skript: es bleibt die Notabschaltung (160 min)
+    hand++;
+    if (x.min > grenze) fehler.push('Handgabe ' + x.min.toFixed(1) + ' min' + (gesehen ? '' : ' (übernommen)'));
+  }
+  // LED: höchstens 12 Wechsel in 24 h; ein Skriptstart vergisst die Zählung (nur RAM), darf also einen mehr
+  const starts = w.logs.filter((l) => /gestartet, Bodenkonto/.test(l.msg)).map((l) => l.t);
+  for (let i = 0; i < w.ledWrites.length; i++) {
+    const t0 = w.ledWrites[i], n = w.ledWrites.filter((t) => t >= t0 && t < t0 + 24 * H).length;
+    const ns = starts.filter((t) => t > t0 && t < t0 + 24 * H).length;
+    ledMax = Math.max(ledMax, n);
+    if (n > 12 + ns) fehler.push('LED ' + n + ' Wechsel in 24 h bei ' + ns + ' Skriptstarts');
+  }
   // Automatikstarts bei richtiger Uhr: nur 10:00 bis 12:30, nicht bei Automatik aus, nicht im Winter
   const au = (t) => { let v = true; for (const h of vcHist) { if (h.t > t) break; v = h.au; } return v; };
   let auto = 0;
@@ -106,6 +129,7 @@ function lauf(seed) {
   return { seed, monat, laeufe: w.runs().length, auto, fehler };
 }
 const gruende = {};                       // Abschaltgründe über alle Läufe: zeigt, welche Wege der Test berührt hat
+let hand = 0, ledMax = 0;                 // geprüfte Handgaben; meiste LED-Wechsel in 24 h
 
 let schlecht = 0, gelaufen = 0;
 for (let i = 1; i <= N; i++) {
@@ -118,5 +142,6 @@ for (let i = 1; i <= N; i++) {
     ' automatisch)' + (ok ? '' : ': ' + [...new Set(e.fehler)].slice(0, 6).join(' | ')));
 }
 console.log('Abschaltgründe: ' + Object.keys(gruende).sort().map((k) => k + ' ' + gruende[k]).join(', '));
+console.log('Handgaben geprüft: ' + hand + ', meiste LED-Wechsel in 24 h: ' + ledMax);
 console.log(`\n${gelaufen - schlecht} von ${gelaufen} Zufallsläufen ohne Regelverstoß [${path.basename(FILE)}]`);
 process.exit(schlecht ? 1 : 0);

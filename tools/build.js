@@ -48,7 +48,7 @@ function cKeys(src) {
     ecma: 5,
     toplevel: true,
     compress: false,                      // keine Umformungen: Inlining erzeugt tiefe anonyme Funktionen
-    mangle: { toplevel: true, reserved: ['selfTest'],    // selfTest ruft das Aufspielwerkzeug per Script.Eval
+    mangle: { toplevel: true, reserved: ['selfTest', 'info'],   // ruft das Aufspielwerkzeug per Script.Eval
       properties: { regex: new RegExp('^(' + keys.join('|') + ')$') } },
     format: { ascii_only: false, comments: false, beautify: false, semicolons: true }
   });
