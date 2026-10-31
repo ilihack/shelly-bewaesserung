@@ -56,6 +56,17 @@ const mock = (opt) => new Promise((res) => startMock(res, opt));
   } catch (e) { pruefe('a) ohne Abbruch', false, e.stack); }
   m.close();
 
+  // f) Skript stürzt beim zweiten Start ab (Bedienfeld schon da, wie nach jedem Stromausfall): Meldung des Skripts
+  m = await mock({});
+  try {
+    const crash = 'var k = Script.storage.getItem("k"); Script.storage.setItem("k", "1");' +
+      'if (k) throw new Error("Too much recursion - the stack is about to overflow");';
+    let fehler = '';
+    try { await deployShelly('http://127.0.0.1:' + m.port, crash, () => {}, { ohneWaechter: true }); } catch (e) { fehler = e.message; }
+    pruefe('f) Absturz beim zweiten Start: Meldung des Skripts im Abbruch', /Script\.Start: error – .*Too much recursion/.test(fehler), fehler);
+  } catch (e) { pruefe('f) ohne Abbruch', false, e.stack); }
+  m.close();
+
   // b) https mit Passwort
   m = await mock({ https: true, pass: 'geheim' });
   try {

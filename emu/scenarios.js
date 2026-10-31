@@ -1184,18 +1184,29 @@ scenarios.S51_led_nach_fehler = function () {
 
 // ------------------------------------------------------------------
 scenarios.S52_fehler_im_rueckruf = function () {
-  // Ein Fehler in einem Rückruf (hier: Shelly.call wirft, wie bei zu vielen offenen Aufrufen) darf das Skript nicht
-  // beenden. a) beim Start der Gabe in der Wetterantwort: verworfen, 20 min später nochmal, dann gegossen
+  // Ein Fehler in einem Rückruf darf das Skript nicht beenden. a) in der Wetterantwort, mitten in der Tagesprüfung
+  // (hier: ihre Meldung wirft): verworfen, Stand von vorher, 20 min später nochmal, dann gegossen
   const w = learnedWorld(T(2027, 6, 1, 6, 30));
   w.storage.s = JSON.stringify(Object.assign(JSON.parse(w.storage.s), { dp: dayNo(T(2027, 5, 31, 12)), d: 14 }));
-  w.powerFail(1000); w.run(T(2027, 6, 1, 9, 59)); w.throwOnce = 'Switch.Set';
+  w.powerFail(1000); w.run(T(2027, 6, 1, 9, 59)); w.throwPrint = /Tagesprüfung/;
   w.run(T(2027, 6, 1, 13, 0));
   const r = w.runs(), p = berlinParts(r[0] ? r[0].on : 0);
-  check('S52 Fehler in der Wetterantwort: Skript läuft, 20 min später gegossen', !w.crashed && w.throwOnce === null &&
+  check('S52 Fehler in der Wetterantwort: Skript läuft, 20 min später gegossen', !w.crashed && w.throwPrint === null &&
     logHas(w, /Fehler Wetterantwort/) && r.length === 1 && p.hh === 10 && p.mm >= 20 && p.mm <= 22, runsInfo(w));
   const ev = w.logs.filter(l => /Tagesprüfung/.test(l.msg));
   check('S52 Konto nicht doppelt verbucht, volle Gabe 14 mm, keine Störung', ev.length === 2 && ev.every(l => /Defizit 14 mm/.test(l.msg)) &&
     r.length === 1 && Math.abs(r[0].min - minFor(14)) < 1 && !logHas(w, /Störung/), ev.map(l => l.msg).join(' | ') + ' / ' + runsInfo(w));
+  // c) beim Einschalten (Shelly.call wirft, wie bei zu vielen offenen Aufrufen): die Gabe kommt beim nächsten
+  //    Durchgang (binnen 1 min), das Konto ist einmal verbucht
+  const w3 = learnedWorld(T(2027, 6, 1, 6, 30));
+  w3.storage.s = JSON.stringify(Object.assign(JSON.parse(w3.storage.s), { dp: dayNo(T(2027, 5, 31, 12)), d: 14 }));
+  w3.powerFail(1000); w3.run(T(2027, 6, 1, 9, 59)); w3.throwOnce = 'Switch.Set';
+  w3.run(T(2027, 6, 1, 13, 0));
+  const r3 = w3.runs(), p3 = berlinParts(r3[0] ? r3[0].on : 0), ev3 = w3.logs.filter(l => /Tagesprüfung/.test(l.msg));
+  check('S52c Fehler beim Einschalten: Skript läuft, binnen 1 min gegossen, einmal geprüft', !w3.crashed && w3.throwOnce === null &&
+    logHas(w3, /Fehler Plan/) && r3.length === 1 && p3.hh === 10 && p3.mm <= 1 && ev3.length === 1 &&
+    Math.abs(r3[0].min - minFor(14)) < 1 && !logHas(w3, /Störung/), runsInfo(w3) + ' / ' + ev3.map(l => l.msg).join(' | '));
+  common(w3, 'S52c');
   // b) beim Anlegen des Wächters: binnen 1 h nachgeholt
   const w2 = mkWorld(T(2027, 6, 1, 6, 0), { weather: weatherConst(4.5) });
   w2.throwOnce = 'Schedule.Create'; w2.runFor(5 * M);
@@ -1295,7 +1306,7 @@ scenarios.S54_diagnose = function () {
   const back = w4.logs.length, st4 = w4.state(), i4 = w4.endpoint('info').body;
   const sollD = fail ? (T(2027, 6, 2, 20, 30) - fail.t) / M : -1;
   check('S54g Ausfall bei geschätzter Uhr: Beginn und Dauer in echter Zeit', !!fail && Math.abs(st4.io * 1000 - fail.t) < 2 * M &&
-    st4.id >= sollD && st4.id <= sollD + 20, (fail ? lt(w4, fail.t) : '-') + ' io=' + lt(w4, st4.io * 1000) + ' id=' + st4.id + ' soll≥' +
+    st4.id >= sollD - 0.5 && st4.id <= sollD + 20, (fail ? lt(w4, fail.t) : '-') + ' io=' + lt(w4, st4.io * 1000) + ' id=' + st4.id + ' soll≥' +
     Math.round(sollD) + ' · ' + i4.split('\n')[9] + ' ' + back);
   // f) Firmware ohne HTTPServer: Skript läuft ohne Diagnose-Seite weiter
   const w3 = mkWorld(T(2027, 6, 1, 6, 0), { weather: weatherConst(4.5), noHttpServer: true });

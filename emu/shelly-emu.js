@@ -230,7 +230,10 @@ class World {
   startScript(dev) {
     const w = this;
     const ctx = {
-      print: (...a) => { const msg = asUtf8(a.join(' ')); w.logs.push({ t: w.t, msg }); if (w.verbose) console.log(w.fmt(w.t), msg); },
+      print: (...a) => {
+        const msg = asUtf8(a.join(' ')); w.logs.push({ t: w.t, msg }); if (w.verbose) console.log(w.fmt(w.t), msg);
+        if (w.throwPrint && w.throwPrint.test(msg)) { w.throwPrint = null; throw new Error('Testfehler'); }   // Test: Fehler mitten im Ablauf
+      },
       JSON, Math, Date, parseInt, parseFloat, isNaN, Object, Array, String, Number
     };
     ctx.console = { log: ctx.print };

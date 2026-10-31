@@ -82,7 +82,7 @@ I ist der Nennstrom laut Typenschild. Die Formeln rechnen mit dem Strom, weil di
 
 ```sh
 npm install
-npm run build                    # build/bewaesserung.min.js (gekürzt, nur ASCII, Sprachmittel geprüft) und build/deploy-browser.js
+npm run build                    # build/bewaesserung.min.js (gekürzt, nur ASCII, Sprachmittel und Stapel geprüft) und build/deploy-browser.js
 node tools/deploy.js <IP-des-Shelly> [--passwort <Gerätepasswort>] [--neues-passwort <neues Passwort>]
 ```
 
@@ -110,11 +110,9 @@ Danach prüft es:
 
 Erst wenn alles stimmt, meldet es „FERTIG“.
 
-**Ohne Werkzeug** geht es auch von Hand, nur ohne die Prüfungen oben:
-1. In der App die Firmware aktualisieren und Matter abschalten.
-2. Auf der Weboberfläche des Shelly unter *Scripts* ein neues Skript anlegen, den Inhalt von `build/bewaesserung.min.js` einfügen (nicht den Quelltext: der hat Umlaute und braucht mehr Speicher), speichern, starten und in der Skriptliste den Autostart einschalten.
+**Nicht von Hand einfügen:** Der Skript-Editor der Weboberfläche schneidet beim Einfügen nach 20 000 Zeichen ab, die Gerätefassung hat rund 31 000. Das Skript endet dann mitten im Code, und der Shelly meldet „Syntax ungültig“. Ohne Node daher den Browserweg oben nehmen: Er lädt in Stücken hoch.
 
-Bedienfeld, Relais-Einstellungen, Wächter, LED und Firmware-Update richtet das Skript selbst ein. Den Access Point und das Passwort (Weboberfläche: *Settings → Device settings → Authentication*) stellst du dann selbst ein.
+Bedienfeld, Relais-Einstellungen, Wächter, LED und Firmware-Update richtet das Skript selbst ein. Den Access Point und das Passwort (Weboberfläche: *Settings → Device settings → Authentication*) stellst du selbst ein.
 
 Danach mit Pumpe:
 1. **Normalleistung einlernen:** Hahn auf, Taster drücken, nach 2 min wieder drücken.
@@ -134,6 +132,7 @@ Bedient wird das Skript nur über das Gerät und die Shelly-App. Seine einzige e
 
 | Befehl | prüft |
 | --- | --- |
+| `node tools/stapel.js [--alle]`, `node emu/stapel-test.js` | Stapelspeicher: Der Shelly hat nur Platz für etwa 15 einfache Aufrufe ineinander, Schleifen und Blöcke kosten mehr. Läuft er über, endet das Skript, mitunter startet der ganze Shelly neu und schaltet den Autostart des Skripts ab. `stapel.js` rechnet für jeden Einstieg (Takt, Rückrufe, Start) den teuersten Weg nach den Kosten, die am Gerät gemessen sind, und verlangt höchstens 70 %; `npm run build` bricht sonst ab. `stapel-test.js` prüft das Modell an den 33 Messungen. |
 | `node emu/scenarios.js [skript]` | 62 Szenarien im Emulator, für Quelltext und Gerätefassung. Der Emulator bildet Relais, Leistung, Firmware-Schutz, Uhr mit Zeitserver, Stromausfall, Speicher, Bedienfeld, Wetterdienst, Ortssuche, Diagnose-Seite und Gerätetemperatur nach und wacht über die Grenzen der Firmware. Die Datumsprüfung der TLS-Zertifikate bildet er nicht nach. |
 | `node emu/zufall.js [skript] [läufe] [tage]` | Zufallstest: wochenlang Stromausfälle, Internet- und Zeitserverausfälle, kaputte Wetterantworten, Pumpenstörungen beim Anlauf und mitten im Lauf, Tastendrücke und Neustarts; prüft Regeln, die immer gelten müssen, etwa Handgabe höchstens 90 min und höchstens 12 LED-Wechsel in 24 h |
 | `sh tools/espruino-run.sh build/bewaesserung.min.js [espruino]` | ein Tag im echten Espruino-Interpreter, auf dem die Shelly-Skriptsprache beruht ([Espruino](https://github.com/espruino/Espruino) für Linux bauen, Pfad als zweites Argument) |

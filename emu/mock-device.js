@@ -60,6 +60,7 @@ function startMock(done, opt) {
       const s = st.scripts.find(x => x.id === p.id);
       if (s.running) return { was_running: true };
       stopScript(); w.code = s.code; w.crashed = null; w.startScript(dev); s.running = true;
+      if (w.crashed) { s.running = false; throw new Error('error'); }   // wie die Firmware: Fehler beim Start
       return { was_running: false };
     },
     'Script.Stop': (p) => { const s = st.scripts.find(x => x.id === p.id); stopScript(); s.running = false; return { was_running: true }; },
@@ -72,7 +73,10 @@ function startMock(done, opt) {
     'Script.GetStatus': (p) => {
       const s = st.scripts.find(x => x.id === p.id);
       const r = { id: s.id, running: s.running && !w.crashed, mem_used: 12000, mem_peak: 14000, mem_free: 60000 };
-      if (w.crashed) r.errors = ['crashed'];
+      if (w.crashed) {                     // wie die Firmware: "Uncaught Error: …" in der ersten Zeile
+        r.errors = ['error'];
+        r.error_msg = 'Uncaught ' + (String(w.crashed.err).split('\n').find((l) => /Error/.test(l)) || w.crashed.err);
+      }
       return r;
     },
     'Schedule.List': () => ({ jobs: JSON.parse(JSON.stringify(w.jobs)), rev: w.jobs.length }),

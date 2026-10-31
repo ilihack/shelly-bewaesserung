@@ -17,6 +17,9 @@
  * Takt (tick jede s, schedule alle 30 s) -> Bedienfeld und LED -> Start (init).
  * Sprache: nur, was der Shelly-Interpreter sicher kann: ES5, keine Pfeilfunktionen, kein const, keine
  * Template-Strings, kein Hoisting, Rückrufe benannt und nicht verschachtelt.
+ * Stapel: Der Shelly hat Platz für nur etwa 15 Aufrufe ineinander; Schleifen, Blöcke und Klammern kosten mit, ein
+ * Überlauf beendet das Skript oder startet den Shelly neu. Darum flach: Zwischenwerte in eigene Anweisungen, Helfer
+ * rufen kaum weiter, kein Selbstaufruf. tools/stapel.js prüft das beim Bauen.
  */
 
 // ============================== Einstellungen ==============================
@@ -106,6 +109,9 @@ var LED = { ok: [0, 100, 0], warn: [100, 70, 0], err: [100, 0, 100], run: [0, 0,
 var S = null;
 var R = {
   k: 0,              // Takt-Zähler
+  u: 0, sw: {},      // Uhrzeit (0 = unbekannt) und Relaisstatus dieses Takts: tiefe Aufrufe lesen sie hier
+  ra: 0, au: true,   // Regenrate aus dem Bedienfeld (0 = Startwert C.RATE_MM_H), Automatik an
+  oq: "",            // Ortsname für die URL der Ortssuche
   eb: 0, eu: 0,      // Uhr-Schätzung: Basis-Unixzeit und Uptime dazu
   est: false,        // Uhr ist geschätzt (kein Internet seit Neustart)
   run: null,         // laufende Beregnung
@@ -116,6 +122,7 @@ var R = {
   wc: 0, weld: false,// Relais-Prüfung bei AUS
   wx: { busy: false, next: 0, tries: 0, L: null, n: 0, rc: false, t: 0, q: 0, cg: 0 },  // Wetterabruf: läuft seit t, Nummer q
   off: false, oa: 0, // letzte Wetterabfrage gescheitert, seit (Unixzeit)
+  ie: false,         // der letzte Ausfall (S.io) endete mit geschätzter Uhr: beim Stellen mitverschieben
   sv: -1e9, sd: false, wn: 0, w24: 0, // Schreibbremse Speicher: letztes Schreiben, noch zu schreiben, Anzahl, Fensterbeginn
   cn: 0, c24: 0,     // Schreibbremse Bedienfeld und Zeitpläne: Anzahl, Fensterbeginn
   why: "",           // Ergebnis der heutigen Prüfung
@@ -144,17 +151,17 @@ function upS() { return Shelly.getUptimeMs() / 1000; }
 function r0(x) { return Math.round(x); }
 function r1(x) { return Math.round(x * 10) / 10; }
 function r2(x) { return Math.round(x * 100) / 100; }
-function f1(x) { return String(r1(x)).replace(".", ","); }   // Anzeige mit Dezimalkomma
+function f1(x) { var v = Math.round(x * 10) / 10; return String(v).replace(".", ","); }   // Anzeige mit Dezimalkomma
 function lim(x, a, b) { return x < a ? a : (x > b ? b : x); }
 function p2(n) { return (n < 10 ? "0" : "") + n; }
-function log(t) {                         // Konsole und die letzten 10 Meldungen für die Diagnose (nur RAM)
-  var L = null, u;
+function log(t) {                         // Konsole und die letzten 10 Meldungen für die Diagnose (nur RAM). Uhrzeit roh
+  var k;                                  // aus dem Takt (R.u), lesbar erst in info(): log() wird überall gerufen
   t = String(t); print("[BW] " + t);
-  try { u = nowU(); if (u) L = loc(u); } catch (e) { L = null; }   // die Fehlermeldung selbst darf nicht scheitern
-  R.lg.push((L ? dmy(L.day) + (R.est ? " ~" : " ") + hm(L.min) : "--.-- --:--") + " " + t.slice(0, 80));   // ~ Uhr geschätzt
+  k = t.slice(0, 80);
+  R.lg.push([R.u, R.est, k]);
   if (R.lg.length > 10) R.lg.shift();
 }
-function sw() { return Shelly.getComponentStatus("switch", 0) || {}; }
+function sw() { return Shelly.getComponentStatus("switch", 0) || {}; }   // im Takt; sonst R.sw, der Stand dieses Takts
 function cbNone(res, err, msg) { if (err) log("RPC-Fehler " + err + " " + msg); }
 // Ein Fehler in einem Rückruf beendet ein Shelly-Skript (der Wächter startet es erst nach bis zu 5 min neu). Darum
 // laufen die Rückrufe über cbSafe (Rückruf als userdata): Fehler werden gemeldet, die Wiederholung kommt vom Takt.
@@ -163,54 +170,52 @@ function cbSafe(res, err, msg, f) {
 }
 
 // ============================== Zeit (C.UTC_H mit EU-Sommerzeit, ohne Firmware-Zeitzone) ==============================
+// "| 0" rundet hier ab wie Math.floor (alle Werte positiv und klein) und spart den Aufruf der Firmware
 function dfc(y, m, d) {                   // Tagesnummer seit 1970-01-01
   y -= m <= 2 ? 1 : 0;
-  var era = Math.floor(y / 400), yoe = y - era * 400;
-  var doy = Math.floor((153 * (m + (m > 2 ? -3 : 9)) + 2) / 5) + d - 1;
-  var doe = yoe * 365 + Math.floor(yoe / 4) - Math.floor(yoe / 100) + doy;
+  var era = (y / 400) | 0, yoe = y - era * 400;
+  var doy = (((153 * (m + (m > 2 ? -3 : 9)) + 2) / 5) | 0) + d - 1;
+  var doe = yoe * 365 + ((yoe / 4) | 0) - ((yoe / 100) | 0) + doy;
   return era * 146097 + doe - 719468;
 }
 function cfd(z) {                         // Tagesnummer -> {y, m, d}
   z += 719468;
-  var era = Math.floor(z / 146097), doe = z - era * 146097;
-  var yoe = Math.floor((doe - Math.floor(doe / 1460) + Math.floor(doe / 36524) - Math.floor(doe / 146096)) / 365);
-  var doy = doe - (365 * yoe + Math.floor(yoe / 4) - Math.floor(yoe / 100));
-  var mp = Math.floor((5 * doy + 2) / 153);
+  var era = (z / 146097) | 0, doe = z - era * 146097;
+  var yoe = ((doe - ((doe / 1460) | 0) + ((doe / 36524) | 0) - ((doe / 146096) | 0)) / 365) | 0;
+  var doy = doe - (365 * yoe + ((yoe / 4) | 0) - ((yoe / 100) | 0));
+  var mp = ((5 * doy + 2) / 153) | 0;
   var m = mp < 10 ? mp + 3 : mp - 9;
-  return { y: yoe + era * 400 + (m <= 2 ? 1 : 0), m: m, d: doy - Math.floor((153 * mp + 2) / 5) + 1 };
+  return { y: yoe + era * 400 + (m <= 2 ? 1 : 0), m: m, d: doy - (((153 * mp + 2) / 5) | 0) + 1 };
 }
-function lastSun(y, m) {                  // Tagesnummer des letzten Sonntags im Monat
-  var last = dfc(m === 12 ? y + 1 : y, m === 12 ? 1 : m + 1, 1) - 1;
-  return last - ((last + 4) % 7);         // 1970-01-01 war ein Donnerstag
-}
-function utcOff(u) {                      // Sommerzeit vom letzten So im März bis letzten So im Oktober, je 01:00 UTC
-  var y = cfd(Math.floor(u / 86400)).y;
-  var a = lastSun(y, 3) * 86400 + 3600, b = lastSun(y, 10) * 86400 + 3600;
+function utcOff(u) {                      // Sommerzeit vom letzten So im März bis letzten So im Oktober, je 01:00 UTC.
+  // Jahr aus der mittleren Jahreslänge: kann um Neujahr einen Tag danebenliegen, dann ist so oder so Winterzeit
+  var y = 1970 + ((u / 31556952) | 0), a = dfc(y, 4, 1) - 1, b = dfc(y, 11, 1) - 1;   // letzter Tag im März, Oktober,
+  a = (a - (a + 4) % 7) * 86400 + 3600;   // davon der letzte Sonntag (1970-01-01 war ein Donnerstag)
+  b = (b - (b + 4) % 7) * 86400 + 3600;
   return (C.UTC_H + (u >= a && u < b ? 1 : 0)) * 3600;
 }
 function loc(u) {                         // Ortszeit: Tagesnummer, Minute, Datum
-  var t = u + utcOff(u), day = Math.floor(t / 86400), c = cfd(day);
-  return { day: day, min: Math.floor((t - day * 86400) / 60), y: c.y, m: c.m, d: c.d };
+  var t = u + utcOff(u), day = (t / 86400) | 0, c = cfd(day);
+  return { day: day, min: ((t - day * 86400) / 60) | 0, y: c.y, m: c.m, d: c.d };
 }
 function ymd(L) { return L.y + "-" + p2(L.m) + "-" + p2(L.d); }
-function hm(min) { return p2(Math.floor(min / 60)) + ":" + p2(min % 60); }
+function hm(min) { return p2((min / 60) | 0) + ":" + p2(min % 60); }
 function dmy(day) { var c = cfd(day); return p2(c.d) + "." + p2(c.m) + "."; }
 function sunUtc(day) {                    // Sonnenaufgang in Minuten nach Mitternacht UTC (NOAA-Näherung) [5]
-  var c = cfd(day), g = 2 * Math.PI / 365 * (day - dfc(c.y, 1, 1));
-  var eq = 229.18 * (0.000075 + 0.001868 * Math.cos(g) - 0.032077 * Math.sin(g) - 0.014615 * Math.cos(2 * g) -
-    0.040849 * Math.sin(2 * g));
-  var de = 0.006918 - 0.399912 * Math.cos(g) + 0.070257 * Math.sin(g) - 0.006758 * Math.cos(2 * g) +
-    0.000907 * Math.sin(2 * g);
+  var c = cfd(day), j = dfc(c.y, 1, 1), g = 2 * Math.PI / 365 * (day - j);
+  var c1 = Math.cos(g), s1 = Math.sin(g), c2 = Math.cos(2 * g), s2 = Math.sin(2 * g);
+  var eq = 229.18 * (0.000075 + 0.001868 * c1 - 0.032077 * s1 - 0.014615 * c2 - 0.040849 * s2);
+  var de = 0.006918 - 0.399912 * c1 + 0.070257 * s1 - 0.006758 * c2 + 0.000907 * s2;
   var la = (R.la === null ? 50 : R.la) * Math.PI / 180;   // Ort noch unbekannt: Mitte der Zeitzone
-  var ha = Math.acos(Math.cos(1.58534) / (Math.cos(la) * Math.cos(de)) - Math.tan(la) * Math.tan(de));
+  var cl = Math.cos(la), cd = Math.cos(de), tl = Math.tan(la), td = Math.tan(de), z = Math.cos(1.58534);
+  var ha = Math.acos(z / (cl * cd) - tl * td);
   return 720 - 4 * ((R.lo === null ? 15 * C.UTC_H : R.lo) + ha * 180 / Math.PI) - eq;
 }
 
 function nowU() {                         // Unixzeit; geschätzt ab Zeitanker, wenn keine echte Zeit da ist
-  var s = Shelly.getComponentStatus("sys");
+  var s = Shelly.getComponentStatus("sys"), m = Shelly.getUptimeMs();
   if (s && typeof s.unixtime === "number" && s.unixtime > C.T_MIN) return s.unixtime;
-  if (R.eb) return R.eb + upS() - R.eu;
-  return null;
+  return R.eb ? R.eb + m / 1000 - R.eu : null;
 }
 
 function ntpSet() {                       // Zeitserver hat gestellt (nicht unser Sys.SetTime)?
@@ -270,7 +275,7 @@ function load() {
   }
   S = v;
 }
-function save() { R.sd = true; flush(); }   // gleich schreiben oder, von der Schreibbremse gehalten, im Takt
+function save() { R.sd = true; }          // geschrieben wird am Ende des Takts (flush), so bleibt der Stapel flach
 function flush() {                        // Schreibbremse: höchstens 1 je Minute, nach WRITES_DAY in 24 h 1 je Stunde;
   var now = upS(), u;                     // fängt auch einen Fehler ab, der save() in Schleife riefe [5]
   if (!R.sd) return;
@@ -285,9 +290,10 @@ function flush() {                        // Schreibbremse: höchstens 1 je Minu
   R.sv = now; R.wn++;                     // auch ein Fehlversuch zählt: kein Dauerversuch
 }
 function cfgCall(m, p, f) {               // Bedienfeld und Zeitpläne schreiben (Flash): höchstens CFG_DAY in 24 h; false = gebremst
-  var now = upS();
+  var now = Shelly.getUptimeMs() / 1000;
   if (now - R.c24 >= 86400) { R.c24 = now; R.cn = 0; }
-  if (R.cn >= C.CFG_DAY) { if (R.cn++ === C.CFG_DAY) log("Schreibbremse Einstellungen: " + m); return false; }
+  if (R.cn === C.CFG_DAY) log("Schreibbremse Einstellungen: " + m);   // einmal melden
+  if (R.cn >= C.CFG_DAY) { R.cn++; return false; }
   Shelly.call(m, p, cbSafe, f);
   R.cn++; R.nc++;
   return true;
@@ -309,11 +315,10 @@ var VC = [
 ];
 var vcI = 0;
 
-function vcNext() {
+function vcNext() {                      // Schleife statt Selbstaufruf: der Stapel des Shelly ist klein
+  while (vcI < VC.length && Shelly.getComponentConfig(VC[vcI][0], VC[vcI][1])) vcI++;
   if (vcI < VC.length) {
-    var s = VC[vcI];
-    if (Shelly.getComponentConfig(s[0], s[1])) { vcI++; vcNext(); return; }
-    cfgCall("Virtual.Add", { type: s[0], id: s[1], config: s[3] }, vcAdded);
+    cfgCall("Virtual.Add", { type: VC[vcI][0], id: VC[vcI][1], config: VC[vcI][3] }, vcAdded);
     return;
   }
   if (!Shelly.getComponentConfig("group", 200)) {
@@ -321,28 +326,29 @@ function vcNext() {
       config: { name: "Bewässerung", meta: { ui: { view: "group" } } } }, vcGroupAdded);
     return;
   }
-  vcGroupAdded(null, 0, "");
+  vcGroup(); vcBind();                    // nacheinander statt ineinander: flacher Stapel
 }
 function vcStart() { R.hb = upS(); R.hn++; vcI = 0; vcNext(); }   // Bedienfeld anlegen (was fehlt) und binden
 function vcAdded(res, err, msg) {
   if (err) log("Bedienfeld " + VC[vcI][2] + ": " + msg);
   vcI++; vcNext();
 }
-function vcGroupAdded(res, err, msg) {
-  var want = [], i, g = Shelly.getComponentStatus("group", 200);
+function vcGroupAdded(res, err, msg) { vcGroup(); vcBind(); }
+function vcGroup() {                      // Gruppe enthält genau das Bedienfeld
+  var want = [], i, g = Shelly.getComponentStatus("group", 200), a, b;
   for (i = 0; i < VC.length; i++) want.push(VC[i][0] + ":" + VC[i][1]);
-  if (!g || JSON.stringify(g.value) !== JSON.stringify(want)) {
-    cfgCall("Group.Set", { id: 200, value: want }, cbNone);
-  }
-  vcBind();
+  a = g ? JSON.stringify(g.value) : ""; b = JSON.stringify(want);
+  if (a !== b) cfgCall("Group.Set", { id: 200, value: want }, cbNone);
 }
 function vcBind() {
   var h = {}, i, ok = true;
   if (R.h) return;                        // schon gebunden (zwei Durchläufe gleichzeitig)
   try {
-    for (i = 0; i < VC.length; i++) {
+    i = 0;
+    while (i < VC.length) {               // while statt for: kostet weniger Stapel
       h[VC[i][2]] = Virtual.getHandle(VC[i][0] + ":" + VC[i][1]);
       if (!h[VC[i][2]]) ok = false;
+      i++;
     }
     if (ok) R.hr = h.re.on("single_push", onRelearn);
   } catch (e) { ok = false; }
@@ -350,18 +356,20 @@ function vcBind() {
     if (R.hn === 1) log("Bedienfeld unvollständig – ohne Anzeige weiter");
     return;
   }
-  R.h = h;
+  R.h = h; panelRead();
   if (R.hn > 1) log("Bedienfeld verbunden");
 }
 function onRelearn(ev) {
   try { S.pn = 0; S.ln = 0; save(); note("Pumpe wird beim nächsten Lauf neu eingelernt"); }
   catch (e) { log("Fehler Taster: " + e); }
 }
-function rate() {
-  var v = R.h ? R.h.ra.getValue() : null;
-  return (typeof v === "number" && v >= 1 && v <= 40) ? v : C.RATE_MM_H;
+function rate() { return R.ra > 0 ? R.ra : C.RATE_MM_H; }
+function autoOn() { return R.au; }
+function panelRead() {                    // Regenrate und Automatik aus dem Bedienfeld: beim Binden und alle 10 s (ui),
+  var v = R.h ? R.h.ra.getValue() : null; // tiefe Aufrufe lesen R.ra und R.au
+  R.ra = (typeof v === "number" && v >= 1 && v <= 40) ? v : 0;
+  R.au = !R.h || R.h.au.getValue() !== false;
 }
-function autoOn() { return !R.h || R.h.au.getValue() !== false; }
 function paused(L) { return S.pu && L.day <= S.pu; }
 
 // ============================== Bodenkonto ==============================
@@ -370,16 +378,16 @@ function inSeason(L) {                    // auch über den Jahreswechsel (Südh
   var a = C.SEASON_FROM, b = C.SEASON_TO;
   return a <= b ? L.m >= a && L.m <= b : L.m >= a || L.m <= b;
 }
-function pending(L) { return S.dp < 0 ? 0 : lim(L.day - 1 - S.dp, 0, 14); }
-function prov(L) {                        // aktuelles Defizit inkl. noch nicht verbuchter Tage
-  return lim(lim(S.d - S.pi, 0, C.D_MAX_MM) + pending(L) * climEt(L.m) * C.KC, 0, C.D_MAX_MM);
+function prov(L) {                        // aktuelles Defizit inkl. noch nicht verbuchter Tage (bis 14, Monatsmittel)
+  var p = S.dp < 0 ? 0 : lim(L.day - 1 - S.dp, 0, 14), d = lim(S.d - S.pi, 0, C.D_MAX_MM);
+  return lim(d + p * ET0_CLIM[L.m - 1] * C.KC, 0, C.D_MAX_MM);
 }
-function secsFor(mm) { return Math.min(C.MAX_RUN_MIN * 60, r0(mm / rate() * 3600)); }
+function secsFor(mm) { var r = rate(), s = Math.round(mm / r * 3600), m = C.MAX_RUN_MIN * 60; return s < m ? s : m; }
 function selfK(mx) { var o = mx ? S.oa : S.ob; return o > -50 ? o : (mx ? C.SELF_DAY_K : C.SELF_NIGHT_K); }
 function estEt(day) {                     // ohne Internet: Monatsmittel, an heißen Tagen mehr (Gerätetemperatur) [2]
-  var m = cfd(day).m, t = R.ty, f = 1;
-  if (t && t.d === day && t.n >= 100) f = lim(1 + C.ET_K * (t.mx - selfK(1) - TMAX_CLIM[m - 1]), 0.5, 1.6);
-  return climEt(m) * f * C.OFF_ET;
+  var m = cfd(day).m, t = R.ty, f = 1, k;
+  if (t && t.d === day && t.n >= 100) { k = selfK(1); f = lim(1 + C.ET_K * (t.mx - k - TMAX_CLIM[m - 1]), 0.5, 1.6); }
+  return ET0_CLIM[m - 1] * f * C.OFF_ET;
 }
 // Gegossenes zuerst abziehen, dann die Tage buchen: Die Gabe kommt morgens, die Verdunstung danach. Umgekehrt
 // schnitte die 25-mm-Grenze die Verdunstung ab, und nach jeder Gabe am Deckel fehlte ein Tag.
@@ -390,14 +398,15 @@ function xDrop() {                        // ältester geschätzter Tag fällt a
   S.xe.shift(); S.xw.shift(); S.xa++;
 }
 function bookEst(L) {                     // ohne Internet: offene Tage geschätzt verbuchen, für die Korrektur merken
-  var d, b, w0 = S.pi;
+  var d, b, e, w0 = S.pi;
   if (S.xa < 0 && S.dp + 1 < L.day) { S.xd = S.d; S.xe = []; S.xw = []; }
   S.d = lim(S.d - S.pi, 0, C.D_MAX_MM); S.pi = 0;
-  for (d = S.dp + 1; d < L.day; d++) {
-    b = S.d;
-    S.d = lim(S.d + r1(estEt(d) * C.KC), 0, C.D_MAX_MM);
+  for (d = S.dp + 1; d < L.day; d++) {   // Zwischenwerte einzeln: Aufrufe in der Schleife kosten Stapel
+    b = S.d; e = estEt(d); e = r1(e * C.KC);
+    S.d = lim(S.d + e, 0, C.D_MAX_MM);
     if (S.xa < 0) S.xa = d;
-    S.xe.push(r1(S.d - b)); S.xw.push(r1(w0)); w0 = 0;   // xe: was nach der Grenze wirklich dazukam
+    e = r1(S.d - b); S.xe.push(e);        // xe: was nach der Grenze wirklich dazukam
+    e = r1(w0); S.xw.push(e); w0 = 0;
     if (S.xe.length > 14) xDrop();
   }
   S.dp = L.day - 1;
@@ -407,7 +416,7 @@ function bookEst(L) {                     // ohne Internet: offene Tage geschät
 function temp(L, now) {                   // alle 10 min, nur wenn das Relais seit 30 min aus ist (Eigenwärme) [2]
   var st, c, v, t;
   if (now - R.ts < 600) return;
-  R.ts = now; st = sw(); c = st.temperature;
+  R.ts = now; st = R.sw; c = st.temperature;
   if (st.output || R.run || now - R.lastStop < 1800 || !c || typeof c.tC !== "number") return;
   v = c.tC; t = R.td;
   if (!t || t.d !== L.day) {
@@ -429,16 +438,17 @@ function learnSelf(L, tn, tx) {           // Eigenwärme lernen: gestern, ganzer
   if (dx > -5 && dx < 50) S.oa = S.oa > -50 ? r1(S.oa + (dx - S.oa) * 0.3) : r1(dx);
 }
 function frostEst() {                     // ohne Internet: Tiefstwert der Nacht = Gerät minus Eigenwärme [2]
-  var t = R.td, c = sw().temperature, v = null;
+  var t = R.td, c = R.sw.temperature, v = null;
   if (t && t.n) v = t.mn;
   else if (c && typeof c.tC === "number") v = c.tC;
   if (v === null) return null;
   return v - selfK(0) - (t && t.n >= 36 ? 0 : 5);   // weniger als 6 h Messwerte (Neustart): 5 K Reserve
 }
 function airNow() {                       // ohne Internet: Luft jetzt = Gerät minus Eigenwärme, nur bei ruhendem Relais;
-  var st = sw(), c = st.temperature;      // für den Frost vorsichtig: die größere Eigenwärme, ungelernt keine Angabe
-  if (S.oa < -50 || st.output || R.run || upS() - R.lastStop < 1800 || !c || typeof c.tC !== "number") return null;
-  return c.tC - Math.max(selfK(0), selfK(1));
+  var st = R.sw, c = st.temperature, now = Shelly.getUptimeMs() / 1000, a, b;   // für den Frost vorsichtig: die
+  if (S.oa < -50 || st.output || R.run || now - R.lastStop < 1800 || !c || typeof c.tC !== "number") return null;
+  a = selfK(0); b = selfK(1);             // größere Eigenwärme, ungelernt keine Angabe
+  return c.tC - Math.max(a, b);
 }
 // Tiefpunkt-Erkennung mit 3 K Schwelle. Gilt nur, wenn vorher mindestens 6 K über mindestens 6 h abgekühlt
 // und danach binnen 3 h um 5 K erwärmt wurde: dann liegt er nahe am Sonnenaufgang (DWD Mannheim) [5]
@@ -457,10 +467,11 @@ function zSample(v, now) {
   else if (v < z.v - 3) { z.mv = z.v; z.mt = z.t; z.s = -1; z.v = v; z.t = now; }
 }
 function clockFix(tUp) {                  // geschätzte Uhr auf Sonnenaufgang + 10 min am Tiefpunkt stellen [5]
-  var u = R.eb + tUp - R.eu, d = Math.floor(u / 86400), i, e, t, lag = null;
-  if (!R.est || upS() - R.zf < 72000) return;
+  var u = R.eb + tUp - R.eu, d = Math.floor(u / 86400), i, e, t, lag = null, now = Shelly.getUptimeMs() / 1000, sr = [];
+  if (!R.est || now - R.zf < 72000) return;
+  sr[0] = sunUtc(d - 1); sr[1] = sunUtc(d); sr[2] = sunUtc(d + 1);   // vor der Schleife: Aufrufe darin kosten Stapel
   for (i = -1; i <= 1; i++) {
-    e = (d + i) * 86400 + sunUtc(d + i) * 60 + 600 - u;
+    e = (d + i) * 86400 + sr[i + 1] * 60 + 600 - u;
     if (R.def ? (e > -43200 && e <= 43200) : (e >= -10800 && e < 75600)) lag = e;
   }
   if (lag === null) return;
@@ -468,12 +479,13 @@ function clockFix(tUp) {                  // geschätzte Uhr auf Sonnenaufgang +
   // erstes Stellen ab 1,5 h Abweichung (Anker-Uhr nur vor); danach nur, wenn ein Morgen 1,5 h vom Ziel abweicht:
   // kein Nachrutschen durch Messrauschen, ein Ausreißer heilt am nächsten klaren Morgen
   if ((R.zn ? Math.abs(e) : (R.def ? Math.abs(lag) : lag)) < C.CLOCK_S) return;
-  t = Math.floor(R.eb + e + upS() - R.eu);
+  t = Math.floor(R.eb + e + now - R.eu);
   Shelly.call("Sys.SetTime", { unixtime: t }, cbSafe, onClockSet);   // wirft der Aufruf, bleibt alles beim Alten
-  R.zf = upS(); R.zl = e; R.co = S.cs; R.cp = upS(); S.cs = t;
+  R.zf = now; R.zl = e; R.co = S.cs; R.cp = now; S.cs = t;
 }
-function oaShift(d) {                     // Uhr gestellt: Beginn eines laufenden Ausfalls mitverschieben
-  if (R.oa) { R.oa += d; if (S.os > 1) S.os = Math.floor(R.oa); }
+function oaShift(d) {                     // Uhr gestellt: Beginn eines laufenden Ausfalls mitverschieben, ebenso den
+  if (R.oa) { R.oa += d; if (S.os > 1) S.os = Math.floor(R.oa); }   // letzten, wenn er mit geschätzter Uhr endete
+  if (R.ie && S.io) S.io = Math.floor(S.io + d);                    // (Wetterdienst vor dem Zeitserver zurück)
 }
 function onClockSet(res, err, msg) {      // Schätzung erst nachziehen, wenn die Geräteuhr wirklich gestellt ist
   R.cp = 0;
@@ -485,7 +497,7 @@ function clockReal(t, old) {              // der Zeitserver hat gestellt: die Uh
   if (R.def && old) shiftDays(loc(t).day - loc(old).day);
   if (!(Math.abs(t - old) <= 60)) R.cg++; // Uhr wirklich gesprungen: laufender Wetterabruf gilt nicht
   if (old) oaShift(t - old);
-  R.eb = t; R.eu = upS(); R.est = false; R.def = false; S.ce = 0; R.td = null; R.ty = null; save();
+  R.eb = t; R.eu = upS(); R.est = false; R.def = false; R.ie = false; S.ce = 0; R.td = null; R.ty = null; save();
 }
 
 // ============================== Relais und Läufe ==============================
@@ -511,7 +523,7 @@ function onSetResult(res, err, msg) {
 }
 // Startet eine eigene Gabe. Rückgabe null = gestartet, sonst Grund.
 function startRun(kind, mm) {
-  var now = upS(), st = sw();
+  var now = upS(), st = R.sw;            // Relaisstatus dieses Takts
   if (R.ps && now > R.ps.until) R.ps = null;          // Befehl kam nie an
   if (R.run || st.output || R.ps) return "läuft";
   if (R.weld) return "Relais";
@@ -523,7 +535,7 @@ function startRun(kind, mm) {
   R.ps = { k: kind, mm: mm, sec: sec, until: now + 15 };
   return null;
 }
-function note(t) { R.note = t; R.noteU = upS(); log(t); }
+function note(t) { R.note = t; R.noteU = Shelly.getUptimeMs() / 1000; log(t); }
 function runBegin(st, gone) {            // gone: eigener Start, der nie als Lauf zu sehen war
   var now = upS(), p = R.ps, u = nowU(), kind, mm, sec, left = 0, el;
   R.ps = null;
@@ -749,46 +761,55 @@ function wxIn(res, err, msg, q) {
 // (Nachprüfung stündlich bis END_MIN). Eine noch gefrorene Leitung wirkt wie ein zugedrehter Hahn: Unterlast [4].
 // Bei der Nachprüfung bleibt die Frostnacht von 10:00 stehen, neu sind nur die Luft und die Regenprognose.
 function decide(L, w, rc) {               // w = Prognose heute oder null (ohne Internet); rc = Nachprüfung
-  var D = prov(L), rainExp = 0, dose = 0, t = nowU(), nm = t ? loc(t).min : L.min, res, fr = null, est = false, air,
-      k = rc && S.rc === L.day ? S.rk : 0;  // Grund der Nachprüfung: 1 Frost (Prognose), 3 Frost (geschätzt), 2 Regen
+  var D = prov(L), rainExp = 0, dose = 0, t = nowU(), nm = L.min, fr = null, est = false, air, z, fD, fF, fR, hn, hE, pz, g,
+      cut, gt, rx, rf, rh, k = rc && S.rc === L.day ? S.rk : 0;  // k: Grund der Nachprüfung: 1 Frost (Prognose),
+                                                                 // 3 Frost (geschätzt), 2 Regen
+  if (t) nm = loc(t).min;
   R.wx.tries = 0;
   if (R.run) { save(); return; }          // Handgabe läuft: geprüft wird danach, der Tag bleibt offen
-  if (S.ev < 0 || !inSeason(cfd(S.ev)) || L.day - S.ev > 60) {   // erste Prüfung der Saison: Zähler der Diagnose neu
+  z = S.ev < 0 ? null : cfd(S.ev);
+  if (!z || !inSeason(z) || L.day - S.ev > 60) {   // erste Prüfung der Saison: Zähler der Diagnose neu
     S.s0 = L.day; S.sa = 0; S.sh = 0; S.sm = 0; S.sf = 0;
   }
   S.ev = L.day; S.rc = -1; S.rk = 0;
   if (k === 1 || k === 3) { fr = S.rf; est = k === 3; }
   else if (w && w.tmin !== null) fr = w.tmin < C.FROST_C ? w.tmin : null;   // Frostnacht laut Prognose
-  else if ((fr = frostEst()) !== null) {  // sonst Gerätefühler, auch wenn der Wert fehlt
-    if (fr >= C.FROST_OFF_C) fr = null; else est = true;
+  else {                                  // sonst Gerätefühler, auch wenn der Wert fehlt
+    fr = frostEst();
+    if (fr !== null) { if (fr >= C.FROST_OFF_C) fr = null; else est = true; }
   }
   air = (w && w.tnow !== null) ? w.tnow : airNow();                       // Luft jetzt
+  // Texte und Rechnungen vorab, die Zweige setzen nur noch: der Stapel des Shelly ist klein
+  fD = f1(D); fF = fr === null ? "" : f1(fr); fR = w ? f1(w.rain) : "";
+  hn = hm(nm); hE = hm(C.END_MIN); pz = S.pu ? dmy(S.pu) : "";
+  if (w && w.prob >= C.RAIN_PROB_MIN && !R.nf) rainExp = Math.max(0, w.rain - C.RAIN_LOSS_MM);
+  g = Math.min(C.DOSE_MAX_MM, D - rainExp);                  // Gabe, falls gegossen wird (letzter Zweig)
+  cut = rainExp > 0 && g < Math.min(C.DOSE_MAX_MM, D);       // die Prognose kürzt sie
+  gt = secsFor(g) * rate() / 3600; gt = f1(gt);              // Menge nach der Laufzeitgrenze (MAX_RUN_MIN)
+  rx = r1(rainExp); rf = fr === null ? 0 : r1(fr);
+  rh = (Math.floor(nm / 60) + 1) * 60 + 5;                   // Nachprüfung 5 min nach der nächsten vollen Stunde
   if (!autoOn()) R.why = "Automatik aus";
-  else if (paused(L)) R.why = "Pause bis " + dmy(S.pu);
-  else if (D < C.TRIGGER_MM) R.why = "nicht nötig (" + f1(D) + " mm)";
+  else if (paused(L)) R.why = "Pause bis " + pz;
+  else if (D < C.TRIGGER_MM) R.why = "nicht nötig (" + fD + " mm)";
   else if (fr !== null && !(air >= C.FROST_THAW_C)) {
-    R.why = "Frostsperre (" + (est ? "geschätzt " : "") + f1(fr) + " °C), gießt ab " + C.FROST_THAW_C + " °C";
-    S.rc = L.day; S.rk = est ? 3 : 1; S.rf = r1(fr); R.rh = (Math.floor(nm / 60) + 1) * 60 + 5;
+    R.why = "Frostsperre (" + (est ? "geschätzt " : "") + fF + " °C), gießt ab " + C.FROST_THAW_C + " °C";
+    S.rc = L.day; S.rk = est ? 3 : 1; S.rf = rf; R.rh = rh;
   }
   else {
-    if (w && w.prob >= C.RAIN_PROB_MIN && !R.nf) rainExp = Math.max(0, w.rain - C.RAIN_LOSS_MM);
-    dose = Math.min(C.DOSE_MAX_MM, D - rainExp);
-    if (rainExp > 0 && dose < Math.min(C.DOSE_MAX_MM, D)) { S.rd = L.day; S.rx = r1(rainExp); }   // Prognose kürzt
+    dose = g;
+    if (cut) { S.rd = L.day; S.rx = rx; }
     else if (S.rd === L.day) S.rd = -1;   // volle Gabe, etwa nach Absage bei der Nachprüfung
     if (dose < C.DOSE_MIN_MM && rainExp > 0) {
-      R.why = "Regen erwartet (" + f1(w.rain) + " mm, " + w.prob + " %)" + (k === 2 ? ", " + hm(nm) + " bestätigt" : "");
-      S.rc = L.day; S.rk = 2; R.rh = (Math.floor(nm / 60) + 1) * 60 + 5;   // stündlich nachsehen, 5 min nach der vollen Stunde
-    } else if (dose < C.DOSE_MIN_MM) R.why = "nicht nötig (" + f1(D) + " mm)";   // nur wenn TRIGGER_MM < DOSE_MIN_MM
-    else if (nm >= C.END_MIN) { R.why = hm(C.END_MIN) + " vorbei, nicht mehr gestartet"; dose = 0; }
-    else R.why = (k === 2 ? "Regen abgesagt, " : (k ? "Frost vorbei, " : "")) + "gegossen " + f1(secsFor(dose) * rate() / 3600) + " mm" +
-      (R.nf ? " (gestern Regen ausgeblieben)" : "");   // Menge nach der Laufzeitgrenze (MAX_RUN_MIN)
+      R.why = "Regen erwartet (" + fR + " mm, " + w.prob + " %)" + (k === 2 ? ", " + hn + " bestätigt" : "");
+      S.rc = L.day; S.rk = 2; R.rh = rh;  // stündlich nachsehen
+    } else if (dose < C.DOSE_MIN_MM) R.why = "nicht nötig (" + fD + " mm)";   // nur wenn TRIGGER_MM < DOSE_MIN_MM
+    else if (nm >= C.END_MIN) { R.why = hE + " vorbei, nicht mehr gestartet"; dose = 0; }
+    else R.why = (k === 2 ? "Regen abgesagt, " : (k ? "Frost vorbei, " : "")) + "gegossen " + gt + " mm" +
+      (R.nf ? " (gestern Regen ausgeblieben)" : "");
   }
   log("Tagesprüfung: Defizit " + r1(D) + " mm" + (w ? "" : " (ohne Internet)") + " -> " + R.why);
-  if (dose >= C.DOSE_MIN_MM) {
-    res = startRun("auto", dose);
-    if (res) R.want = { k: "auto", mm: dose, exp: nowU() + 7200 };
-  }
-  save();
+  if (dose >= C.DOSE_MIN_MM) R.want = { k: "auto", mm: dose, exp: (t || 0) + 7200 };   // startet schedule(), noch im
+  save();                                 // selben Durchgang oder binnen 30 s: so bleibt der Stapel hier flach
 }
 // Fürs Aufspielwerkzeug (Script.Eval): der erste Aufruf holt die größte Wetterantwort (15 Tage) und liest sie,
 // jeder weitere meldet das Ergebnis. Der Name bleibt in der Gerätefassung erhalten (tools/build.js).
@@ -816,18 +837,19 @@ function defTime() {                      // ohne Anker und ohne Zeitserver: Ein
 }
 function geo() {                          // Ortsname -> Koordinaten (Open-Meteo), einmal, dann gespeichert;
   R.gn = upS() + 900;                     // Postleitzahlen kennt der Dienst nicht, Ortsnamen schon
-  Shelly.call("HTTP.GET", { url: "https://geocoding-api.open-meteo.com/v1/search?count=1&name=" + uenc(C.ORT) +
-    "&countryCode=" + C.LAND, timeout: 20 }, cbSafe, onGeo);
+  Shelly.call("HTTP.GET", { url: "https://geocoding-api.open-meteo.com/v1/search?count=1&name=" + R.oq +
+    "&countryCode=" + C.LAND, timeout: 20 }, cbSafe, onGeo);   // R.oq = uenc(C.ORT), einmal in init
 }
 function uenc(t) {                        // für die URL: UTF-8 mit Prozentzeichen (Umlaute, ß, Leerzeichen; bis U+07FF)
-  var o = "", i, c, d, b = [];            // auf dem Gerät sind Umlaute schon UTF-8-Bytes (tools/build.js)
-  for (i = 0; i < t.length; i++) {
-    c = t.charCodeAt(i); d = t.charCodeAt(i + 1);
-    if ((c > 47 && c < 58) || (c > 64 && c < 91) || (c > 96 && c < 123)) { o += t.charAt(i); continue; }
-    if (c < 128) b = [c];
-    else if (c > 193 && c < 224 && d > 127 && d < 192) { b = [c, d]; i++; }   // schon UTF-8-Bytes
-    else b = [192 | (c >> 6), 128 | (c & 63)];                              // Zeichen -> UTF-8
-    for (c = 0; c < b.length; c++) o += "%" + ("0" + b[c].toString(16)).slice(-2).toUpperCase();
+  var o = "", i = 0, c, d, b, x = "0123456789ABCDEF";   // auf dem Gerät sind Umlaute schon UTF-8-Bytes (tools/build.js)
+  while (i < t.length) {                  // while, keine innere Schleife: kostet weniger Stapel
+    c = t.charCodeAt(i); d = t.charCodeAt(i + 1); b = -1;
+    if ((c > 47 && c < 58) || (c > 64 && c < 91) || (c > 96 && c < 123)) o += t.charAt(i);
+    else if (c < 128) o += "%" + x.charAt(c >> 4) + x.charAt(c & 15);
+    else if (c > 193 && c < 224 && d > 127 && d < 192) { b = d; i++; }      // schon UTF-8-Bytes
+    else { b = 128 | (c & 63); c = 192 | (c >> 6); }                        // Zeichen -> UTF-8
+    if (b >= 0) o += "%" + x.charAt(c >> 4) + x.charAt(c & 15) + "%" + x.charAt(b >> 4) + x.charAt(b & 15);
+    i++;
   }
   return o;
 }
@@ -849,7 +871,7 @@ function setOff(v) {                      // Wetterdienst weg oder zurück; für
   if (v && !R.oa) R.oa = u || 0;
   if (v && !R.off) R.pbNext = upS() + 900; // eben gescheitert: Verbindungstest erst in 15 min
   if (!v) {
-    if (R.off && R.oa && u) { S.io = Math.floor(R.oa); S.id = Math.max(0, r0((u - R.oa) / 60)); }
+    if (R.off && R.oa && u) { S.io = Math.floor(R.oa); S.id = Math.max(0, r0((u - R.oa) / 60)); R.ie = R.est; }
     R.oa = 0;
   }
   R.off = v; S.os = v ? Math.floor(R.oa) || 1 : 0;   // offener Ausfall: nach einem Neustart weiter gelb, Test läuft weiter
@@ -863,13 +885,12 @@ function shiftDays(k) {                   // die Annahme 15. April war falsch: T
   if (S.rd >= 0) S.rd += k;
   if (S.rc >= 0) S.rc += k;
   if (S.fu > 1) S.fu += k * 86400;
-  if (S.io) S.io += k * 86400;
+  if (S.io && !R.ie) S.io += k * 86400;   // mit geschätzter Uhr erfasst: verschiebt oaShift genau
   if (S.s0 > 0) S.s0 += k;
   S.rt = 0; S.df = 0; R.td = null; R.ty = null; R.z = null;
   log("Echte Uhrzeit da: Tagesmarken um " + k + " Tage verschoben");
 }
 function schedule() {
-  flush();                                // von der Schreibbremse gehaltenen Stand schreiben, sobald erlaubt
   if (R.defAt && upS() >= R.defAt) defTime();
   if (upS() >= R.cfgAt) { R.cfgAt = upS() + 3600; applyCfg(); watchdog(); }   // stündlich: Notabschaltung, Zeitpläne
   if (!R.h && upS() - R.hb >= (R.hn < 10 ? 60 : 3600)) vcStart();          // Bedienfeld fehlt: nochmal versuchen
@@ -877,7 +898,6 @@ function schedule() {
   var u = nowU();
   if (!u) return;
   var L = loc(u), now = upS();
-  if (R.wx.busy && now - R.wx.t > 60) onWx(null, -1, "keine Antwort", R.wx.q);   // Rückruf kam nie: wie ein Fehlschlag
   if (R.est && !(R.cp && now - R.cp < 60) && (Math.abs(u - (R.eb + now - R.eu)) > 5 || ntpSet())) {   // Zeitserver
     clockReal(u, R.eb + now - R.eu);
   }
@@ -916,39 +936,40 @@ function schedule() {
 function onProbe(res, err, msg) { if (!err && res && res.code === 200 && R.off) { setOff(false); save(); } }
 // Alle Hinweise an einer Stelle: LED, Statuszeile und Diagnose zeigen dasselbe. e = Störung (violett), w = Hinweise (gelb)
 function checks(L) {
-  var w = [];
+  var w = [], h = hm(C.START_MIN);
   if (!L) w.push("Uhrzeit unbekannt");
-  else if (R.def) w.push("Uhr angenommen: Einstecken = " + hm(C.START_MIN));
+  else if (R.def) w.push("Uhr angenommen: Einstecken = " + h);
   else if (R.est) w.push("Uhr geschätzt");
   if (R.la === null) w.push("Ort " + (R.gx ? C.ORT + " nicht gefunden" : "unbekannt"));
   else if (R.off) w.push("ohne Internet");   // ohne Ort gibt es kein Wetter, egal ob Internet
   if (R.noStore) w.push("Speicher fehlt (Firmware alt)");
   return { e: R.weld ? "Relais klebt" : (S.fo ? "Störung: " + S.ft : ""), w: w };
 }
-function statusText(L) {
-  var r = R.run, t, i, c, f = S.fu > 1 ? loc(S.fu) : null;
+function statusText(L) {                 // Texte vorab in eigenen Anweisungen: der Stapel des Shelly ist klein
+  var r = R.run, t, i, c, f = S.fu > 1 ? loc(S.fu) : null, n = S.rt ? loc(S.rt) : null, now = Shelly.getUptimeMs() / 1000,
+      hs = hm(C.START_MIN), he = hm(C.END_MIN), pz = S.pu ? dmy(S.pu) : "", fm = f ? hm(f.min) : "", a, b;
   if (R.weld) return "ALARM: Pumpe zieht Strom trotz AUS – Relais klebt? Stecker ziehen!";
   if (r) {
-    t = r.sec - (upS() - r.t0);
+    t = r.sec - (now - r.t0); a = f1(r.mm); b = Math.round(t / 60); c = Math.round(R.sw.apower || 0);
     return "Beregnung (" + (r.k === "hand" ? "Hand" : (r.k === "retry" ? "Nachlauf" : "Automatik")) + "): " +
-      f1(r.mm) + " mm, noch " + Math.max(0, r0(t / 60)) + " min, " + r0(sw().apower || 0) + " W";
+      a + " mm, noch " + (b > 0 ? b : 0) + " min, " + c + " W";
   }
   if (!L) return "Uhrzeit unbekannt – Automatik wartet auf Internet. Taster geht.";
   if (S.fo && (!f || f.day === L.day)) {    // Störung heute; ältere stehen hinten, bis ein Lauf fehlerfrei war
-    t = "Störung" + (f ? " " + hm(f.min) : "") + ": " + S.ft;
-    t += S.rt ? ". Nachlauf " + hm(loc(S.rt).min) : (R.want ? ". Neuer Versuch bis " + hm(C.END_MIN) :
-      ". Nächster Versuch morgen " + hm(C.START_MIN));
+    b = n ? hm(n.min) : "";
+    t = "Störung" + (f ? " " + fm : "") + ": " + S.ft;
+    t += n ? ". Nachlauf " + b : (R.want ? ". Neuer Versuch bis " + he : ". Nächster Versuch morgen " + hs);
   } else if (!inSeason(L)) t = "Winterpause bis 01." + p2(C.SEASON_FROM) + ". – Taster geht";
   else if (!autoOn()) t = "Automatik aus – Taster geht";
-  else if (paused(L)) t = "Pause bis " + dmy(S.pu);
+  else if (paused(L)) t = "Pause bis " + pz;
   else if (S.ev === L.day) t = "Heute: " + (R.why || "geprüft");
-  else if (L.min < C.START_MIN) t = "Bereit, Prüfung " + hm(C.START_MIN);
-  else t = L.min < C.END_MIN ? "Prüfung läuft" : "Heute nicht geprüft, nächste Prüfung morgen " + hm(C.START_MIN);
-  if (S.fo && f && f.day !== L.day) t += " · Störung " + dmy(f.day) + " " + hm(f.min) + ": " + S.ft;
+  else if (L.min < C.START_MIN) t = "Bereit, Prüfung " + hs;
+  else t = L.min < C.END_MIN ? "Prüfung läuft" : "Heute nicht geprüft, nächste Prüfung morgen " + hs;
+  if (S.fo && f && f.day !== L.day) { a = dmy(f.day); t += " · Störung " + a + " " + fm + ": " + S.ft; }
   c = checks(L).w;                        // Hinweise vor den Infos: gekürzt wird hinten
   for (i = 0; i < c.length; i++) t += " · " + c[i];
   if (S.lr) t += " · Zuletzt " + S.lr;
-  if (R.note && upS() - R.noteU > 43200) R.note = "";
+  if (R.note && now - R.noteU > 43200) R.note = "";
   if (R.note) t += " · " + R.note;
   else if (S.pn) t += " · Pumpe normal " + S.pn + " W";
   while (t.length > 230 && t.lastIndexOf(" · ") > 0) t = t.slice(0, t.lastIndexOf(" · "));   // Textfeld: 255 Byte
@@ -965,14 +986,17 @@ function ui() {
   } catch (e) {                           // Bedienfeld verloren: neu anlegen und binden (schedule), höchstens 3-mal
     log("Bedienfeld neu: " + e); R.hl++;
     try { R.h.re.off(R.hr); } catch (e2) { /* Taster schon weg */ }
-    R.h = null; R.hn = 0; R.hb = 0; R.paShown = -1; R.lastTxt = ""; R.lastD = -1;
+    R.h = null; R.hn = 0; R.hb = 0; R.paShown = -1; R.lastTxt = ""; R.lastD = -1; panelRead();
   }
 }
 function uiSet(L) {
-  var t, d, pv = R.h.pa.getValue();
+  var t, d, pv, a;
+  panelRead();
+  pv = R.h.pa.getValue();
   if (L && typeof pv === "number" && R.paShown >= 0 && pv !== R.paShown) {  // Pause im Bedienfeld geändert
     S.pu = pv > 0 ? L.day + r0(pv) - 1 : 0; S.rt = 0; R.want = null; save();
-    log("Pause " + (pv > 0 ? "bis " + dmy(S.pu) : "aufgehoben"));
+    a = pv > 0 ? dmy(S.pu) : "";
+    log("Pause " + (pv > 0 ? "bis " + a : "aufgehoben"));
   }
   d = L && paused(L) ? S.pu - L.day + 1 : 0;
   if (d !== R.paShown) { R.h.pa.setValue(d); R.paShown = d; }
@@ -1009,30 +1033,43 @@ function onLed(res, err, msg) {           // nicht geklappt: in 1 h nochmal (hö
 // (Benutzer admin). Die Seite entsteht erst beim Aufruf und ändert nichts. Das Aufspielwerkzeug zeigt sie per info().
 function when(u) { var L = loc(u); return dmy(L.day) + L.y + " " + hm(L.min); }
 function fwVer() { try { var d = Shelly.getDeviceInfo(); return (d && d.ver) || "?"; } catch (e) { return "?"; } }
-function dur(s) { var m = r0(s / 60); return m < 120 ? m + " min" : (m < 2880 ? r0(m / 60) + " h" : r0(m / 1440) + " Tage"); }
+function dur(s) {
+  var m = Math.round(s / 60), h = Math.round(m / 60), d = Math.round(m / 1440);
+  return m < 120 ? m + " min" : (m < 2880 ? h + " h" : d + " Tage");
+}
 var LEDN = { ok: "grün", warn: "gelb", err: "violett" };
-function info() {
-  var u = nowU(), L = u ? loc(u) : null, c = checks(L), now = upS(), i, t, k = ledOf(c);
-  t = "Bewässerung " + (u ? when(u) : "– Uhrzeit unbekannt") + "\n\nStatus: " + statusText(L) +
+function info() {                         // alle Aufrufe vorab, der Text danach (Stapel)
+  var u = nowU(), L = u ? loc(u) : null, c = checks(L), now = Shelly.getUptimeMs() / 1000, i, t, k = ledOf(c),
+      st = statusText(L), cw = c.w.join(", "), w0 = u ? when(u) : "– Uhrzeit unbekannt", wf = S.fu > 1 ? when(S.fu) + " " : "",
+      s0 = S.s0 > 0 ? dmy(S.s0) : "-", sm = f1(S.sm), bk = L ? prov(L) : S.d, ob = S.ob > -50 ? f1(S.ob) : "-",
+      oa = S.oa > -50 ? f1(S.oa) : "-", wo = R.off && R.oa ? when(R.oa) : "", io = S.io ? when(S.io) : "",
+      di = S.io ? dur(S.id * 60) : "", fw = fwVer(), an = u ? when(u - now) : "?", dn = dur(now),
+      t0 = R.t0 > C.T_MIN ? when(R.t0) : "", ds = dur(now - R.s0);
+  bk = f1(bk);
+  t = "Bewässerung " + w0 + "\n\nStatus: " + st +
     "\nLED: " + (LEDN[R.led] || "noch nicht gesetzt") + (k !== R.led ? ", wechselt bald auf " + LEDN[k] : "") +   // [3]
-    " – " + (c.e || c.w.join(", ") || "alles in Ordnung") +
-    "\nLetzte Störung: " + (S.ft ? (S.fu > 1 ? when(S.fu) + " " : "") + S.ft + (S.fo ? " (offen)" : " (erledigt)") : "keine") +
+    " – " + (c.e || cw || "alles in Ordnung") +
+    "\nLetzte Störung: " + (S.ft ? wf + S.ft + (S.fo ? " (offen)" : " (erledigt)") : "keine") +
     "\nLetzter Lauf: " + (S.lr || "keiner") +
-    "\nSaison seit " + (S.s0 > 0 ? dmy(S.s0) : "-") + ": Automatik " + S.sa + ", Hand " + S.sh + ", zusammen " +
-    f1(S.sm) + " mm, Störungen " + S.sf +
-    "\nBodenkonto " + f1(L ? prov(L) : S.d) + " mm, Normalleistung " + (S.pn ? S.pn + " W" : "nicht gelernt") +
-    ", Eigenwärme Fühler Nacht/Tag " + (S.ob > -50 ? f1(S.ob) : "-") + " / " + (S.oa > -50 ? f1(S.oa) : "-") + " K" +
+    "\nSaison seit " + s0 + ": Automatik " + S.sa + ", Hand " + S.sh + ", zusammen " + sm + " mm, Störungen " + S.sf +
+    "\nBodenkonto " + bk + " mm, Normalleistung " + (S.pn ? S.pn + " W" : "nicht gelernt") +
+    ", Eigenwärme Fühler Nacht/Tag " + ob + " / " + oa + " K" +
     "\nUhr: " + (!u ? "unbekannt" : (R.def ? "angenommen" : (R.est ? "geschätzt" : "Zeitserver"))) +
-    "\nInternet: " + (R.off ? "Wetterdienst fehlt" + (R.oa ? " seit " + when(R.oa) : "") :
+    "\nInternet: " + (R.off ? "Wetterdienst fehlt" + (R.oa ? " seit " + wo : "") :
       (R.la === null ? "ohne Ort kein Wetterabruf" : "ok")) +
-    (S.io ? ", letzter Ausfall " + when(S.io) + ", " + dur(S.id * 60) : "") +
+    (S.io ? ", letzter Ausfall " + io + ", " + di : "") +
     "\nOrt: " + C.ORT + (R.la === null ? (R.gx ? " nicht gefunden" : " noch unbekannt") : " " + R.la + ", " + R.lo) +
-    "\nGerät: Firmware " + fwVer() + ", an seit " + (u ? when(u - now) : "?") + " (" + dur(now) + ")" +
-    (R.t0 > C.T_MIN ? ", davor zuletzt gespeichert " + when(R.t0) : "") + "; Skript läuft seit " + dur(now - R.s0) +
+    "\nGerät: Firmware " + fw + ", an seit " + an + " (" + dn + ")" +
+    (R.t0 > C.T_MIN ? ", davor zuletzt gespeichert " + t0 : "") + "; Skript läuft seit " + ds +
     "\nFlash-Schreibvorgänge seit Skriptstart: Speicher " + R.nw + ", Einstellungen " + R.nc + ", LED " + R.nl +
     "\n\nLetzte Meldungen:";
-  for (i = R.lg.length - 1; i >= 0; i--) t += "\n" + R.lg[i];
+  i = R.lg.length - 1;
+  while (i >= 0) { t += lgLine(R.lg[i]); i--; }   // while statt for: kostet weniger Stapel
   return t;
+}
+function lgLine(g) {                      // Meldung [Unixzeit, Uhr geschätzt, Text] -> Zeile; ~ = Uhr war geschätzt
+  var L = g[0] ? loc(g[0]) : null, d = L ? dmy(L.day) : "", h = L ? hm(L.min) : "";
+  return "\n" + (L ? d + (g[1] ? " ~" : " ") + h : "--.-- --:--") + " " + g[2];
 }
 function onInfo(req, res) {               // ein Fehler hier darf das Skript nicht beenden
   try { res.body = info(); res.code = 200; } catch (e) { res.body = "Fehler: " + e; res.code = 500; }
@@ -1043,7 +1080,7 @@ function tick() {
   var st;
   R.k++;
   try {
-    st = sw();
+    st = R.sw = sw(); R.u = nowU() || 0;  // Stand dieses Takts für alle tieferen Aufrufe
     if (st.output && !R.run) runBegin(st);
     else if (!st.output && R.run) runEnd(st);
     else if (st.output && R.run) monitor(st);
@@ -1053,8 +1090,11 @@ function tick() {
     if (!st.output) weldCheck(st);
     R.boot = false;
   } catch (e) { log("Fehler Takt: " + e); }
+  // Wetter-Rückruf kam nie: wie ein Fehlschlag. Hier oben statt in schedule (Stapel); onWx fängt seine Fehler selbst
+  if (R.k % 30 === 1 && R.wx.busy && upS() - R.wx.t > 60) onWx(null, -1, "keine Antwort", R.wx.q);
   if (R.k % 30 === 1) { try { schedule(); } catch (e2) { log("Fehler Plan: " + e2); } }
   if (R.k % 10 === 2) { try { ui(); } catch (e3) { log("Fehler Anzeige: " + e3); } }
+  try { flush(); } catch (e4) { log("Fehler Speicher: " + e4); }   // was save() vorgemerkt hat, gebremst [5]
 }
 
 // ============================== Start ==============================
@@ -1105,6 +1145,7 @@ function onSchedSet(res, err, msg) {
 }
 function init() {
   load();
+  R.sw = sw(); R.u = nowU() || 0; R.oq = uenc(C.ORT);
   if (typeof C.LAT === "number" && typeof C.LON === "number") { R.la = C.LAT; R.lo = C.LON; }   // Ort eingetragen
   else if (S.la !== null) { R.la = S.la; R.lo = S.lo; }                                        // Ort gespeichert
   R.t0 = S.t; R.s0 = upS();               // für die Diagnose
@@ -1117,7 +1158,7 @@ function init() {
       S.ce = 0; save();
     }
   } else if (S.t > C.T_MIN) {              // Zeitanker: untere Schranke, nie zu früh; nach Skript-Neustart genau
-    R.eb = S.t + (up >= S.tu ? up - S.tu : up); R.eu = up; R.est = true; R.def = S.df === 1;
+    R.eb = S.t + (up >= S.tu ? up - S.tu : up); R.eu = up; R.est = true; R.def = S.df === 1; R.u = nowU() || 0;
     if (S.ce !== 1 || up < S.tu || !(s && s.unixtime > C.T_MIN)) {   // nach einem Skript-Neustart läuft die
       S.ce = 1; S.cs = Math.floor(R.eb);                              // gestellte Geräteuhr weiter: nichts zu schreiben
       Shelly.call("Sys.SetTime", { unixtime: S.cs }, cbNone);

@@ -71,6 +71,15 @@ async function deployShelly(base, code, log, opt) {
     }
     throw new Error('Gerät kommt nicht wieder');
   }
+  async function start(id) {                         // scheitert der Start, die Meldung des Skripts zeigen (etwa Stapel)
+    try { await rpc('Script.Start', { id: id }); }
+    catch (e) {
+      let m = '';
+      try { const st = await rpc('Script.GetStatus', { id: id }); m = String(st.error_msg || (st.errors || []).join(',')).split('\n')[0]; }
+      catch (e2) { /* Gerät weg */ }
+      throw new Error(e.message + (m ? ' – ' + m : ''));
+    }
+  }
   const isWd = (j, id) => (j.calls || []).some((c) => String(c.method).toLowerCase() === 'script.start' && c.params && c.params.id === id);
   const verNum = (v) => (v || '0.0.0').split('-')[0].split('.').map(Number).reduce((a, x) => a * 1000 + x, 0);
   const out = { schritte: [], firmwareNeu: false };
@@ -141,14 +150,14 @@ async function deployShelly(base, code, log, opt) {
     step('Autostart an');
     // 5. Starten, Bedienfeld anlegen lassen, einmal neu starten (Handles nach dem Anlegen); das Skript stellt
     //    dabei Relais und Wächter selbst ein
-    await rpc('Script.Start', { id: s.id });
+    await start(s.id);
   } catch (e) {
     for (const id of angehalten) { try { await rpc('Schedule.Update', { id: id, enable: true }); } catch (e2) { /* Gerät weg */ } }
     throw new Error('Gerät ohne laufendes neues Skript – Aufspielen wiederholen (' + e.message + ')');
   }
   await sleep(15000);
   await rpc('Script.Stop', { id: s.id });
-  await rpc('Script.Start', { id: s.id });
+  await start(s.id);                                 // zweiter Start: Bedienfeld schon da (so wie nach jedem Stromausfall)
   await sleep(20000);
   // Speicher unter Last: das Skript holt einmal die größte Wetterantwort (15 Tage) und liest sie
   let selbst = 'nicht gelaufen';

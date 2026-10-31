@@ -74,8 +74,15 @@ function cKeys(src) {
     }
   })(ast, 0);
   if (maxDepth > 2) errs.push('Funktionen ' + maxDepth + ' Ebenen tief');
+  // Stapelspeicher: der teuerste Weg je Einstieg höchstens ANTEIL des am Gerät gemessenen Platzes (tools/stapel.js)
+  const stapel = require('./stapel');
+  const st = stapel.analysiere(code, stapel.quellNamen(src));
+  const tief = st.ergebnis[0];
+  for (const e of st.ergebnis) if (e.anteil > stapel.ANTEIL) errs.push('Stapel ' + Math.round(e.anteil * 100) + ' % ' + e.einstieg + ': ' + e.weg.join(' > '));
+  for (const f of st.fehler) errs.push('Stapel: ' + f);
   fs.mkdirSync(path.dirname(OUT), { recursive: true });
   fs.writeFileSync(OUT, code);
-  console.log(JSON.stringify({ quelle: src.length, geraet: code.length, funktionsTiefe: maxDepth, fehler: errs }, null, 1));
+  console.log(JSON.stringify({ quelle: src.length, geraet: code.length, funktionsTiefe: maxDepth,
+    stapel: tief ? Math.round(tief.anteil * 100) + ' % (' + tief.einstieg + ')' : '-', fehler: errs }, null, 1));
   if (errs.length) process.exit(1);
 })();
