@@ -3,7 +3,7 @@
     Firmware jetzt 2.1.0
     Matter abgeschaltet
     Skriptplatz angelegt: 1
-    Code hochgeladen: 34959 Byte in 35 Stücken
+    Code hochgeladen: 35297 Byte in 35 Stücken
     Autostart an
     Selbsttest im Skript (Ort, Wetter 15 Tage): ok, Ort 49.48 8.45
     Skript läuft: true, Speicher 12000 (Spitze 14000, frei 60000, Reserve in der Spitze 58000)
@@ -12,7 +12,7 @@
     Status: Heute nicht geprüft, nächste Prüfung morgen 10:00
     Uhr: 2026-10-19T13:00:55.000Z
     Wetterdienst vom Gerät: ok 2026-10-19: ET0 4 mm gestern
-    Diagnose-Seite: http://127.0.0.1:41157/script/1/info
+    Diagnose-Seite: http://127.0.0.1:38261/script/1/info
         | Bewässerung 19.10.2026 15:00
     | 
     | Status: Heute nicht geprüft, nächste Prüfung morgen 10:00
@@ -53,14 +53,14 @@
   ok   a) Abbruch zweimal: Meldung, Wächter wieder an
   ok   f) Absturz beim zweiten Start: Meldung des Skripts im Abbruch
   ok   b) Umleitung auf https erkannt
-(node:3826) Warning: Setting the NODE_TLS_REJECT_UNAUTHORIZED environment variable to '0' makes TLS connections and HTTPS requests insecure by disabling certificate verification.
+(node:2382) Warning: Setting the NODE_TLS_REJECT_UNAUTHORIZED environment variable to '0' makes TLS connections and HTTPS requests insecure by disabling certificate verification.
 (Use `node --trace-warnings ...` to show where the warning was created)
     Gerät: S3PL-20112EU (OutdoorPlugSG3), Firmware 1.7.1, Gen 3, Passwort an
     Firmware 1.7.1 -> 2.1.0 (neueste stabile) wird installiert
     Firmware jetzt 2.1.0
     Matter abgeschaltet
     Skriptplatz angelegt: 1
-    Code hochgeladen: 34959 Byte in 35 Stücken
+    Code hochgeladen: 35297 Byte in 35 Stücken
     Autostart an
     Selbsttest im Skript (Ort, Wetter 15 Tage): ok, Ort 49.48 8.45
     Skript läuft: true, Speicher 12000 (Spitze 14000, frei 60000, Reserve in der Spitze 58000)
@@ -69,7 +69,7 @@
     Status: Heute nicht geprüft, nächste Prüfung morgen 10:00
     Uhr: 2026-10-19T13:00:55.000Z
     Wetterdienst vom Gerät: ok 2026-10-19: ET0 4 mm gestern
-    Diagnose-Seite: https://127.0.0.1:46205/script/1/info (Anmeldung: admin und Gerätepasswort)
+    Diagnose-Seite: https://127.0.0.1:43025/script/1/info (Anmeldung: admin und Gerätepasswort)
         | Bewässerung 19.10.2026 15:00
     | 
     | Status: Heute nicht geprüft, nächste Prüfung morgen 10:00
@@ -82,7 +82,7 @@
     | Uhr: Zeitserver
     | Internet: ok
     | Ort: Ludwigshafen am Rhein 49.48, 8.45
-    | Gerät: Firmware 1.7.1, an seit 19.10.2026 15:00 (1 min); Skript läuft seit 0 min
+    | Gerät: Firmware 1.7.1, an seit 19.10.2026 14:59 (1 min); Skript läuft seit 0 min
     | Flash-Schreibvorgänge seit Skriptstart: Speicher 0, Einstellungen 0, LED 0
     | 
     | Störungen (gespeichert, neueste zuerst): keine

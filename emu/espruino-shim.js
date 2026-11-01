@@ -1,6 +1,6 @@
 // Minimal-Gerät für den echten Espruino-Interpreter (ES5). Wird vor das Skript gehängt.
 // Ablauf: 01.06.2027 09:00 MESZ, Konto 14 mm, Pumpe nach alter Fassung gelernt 1320 W (ln bleibt liegen).
-// Eingesteckt: ab 10 s 5× drücken = Anlernen; nach dem Signal Hahn zu, 3 min später wieder auf.
+// Eingesteckt: ab 10 s 5× drücken = Anlernen; 84 s nach dem 5. Druck Hahn zu, 3 min später wieder auf.
 // 10:00 Automatik 14 mm -> 10:20 Brunnen leer -> Schutz -> 11:10 Brunnen wieder voll -> 11:20 Nachlauf
 // 18:00 Taster -> Handgabe; 02.06. 10:00 Prüfung. Ausgabe: Zeilen mit "##".
 var __W = {
@@ -130,7 +130,7 @@ function __runUntilUp(endMs) {
 function __memSample() { var m = process.memory(); if (m.usage > __W.memMax) __W.memMax = m.usage; }
 // Welt-Ereignisse (Uptime in ms ab 09:00)
 for (var __p = 0; __p < 5; __p++) __at(10000 + __p * 1500, function () { __setOut(!__W.out, 'taster', 0); });
-__at(100e3, function () { __W.mode = 'closed'; print('## Hahn zu ' + __hm()); });   // Signal kommt ~75 s nach dem Einstecken
+__at(100e3, function () { __W.mode = 'closed'; print('## Hahn zu ' + __hm()); });   // Normalleistung fertig ~77 s nach dem Einstecken
 __at(280e3, function () { __W.mode = 'normal'; print('## Hahn auf ' + __hm()); });
 __at(80 * 60e3, function () { __W.mode = 'dry'; print('## Brunnen leer ' + __hm()); });
 __at(130 * 60e3, function () { __W.mode = 'normal'; print('## Brunnen wieder voll ' + __hm()); });

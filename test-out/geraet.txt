@@ -11,7 +11,7 @@
   ok   S01: kein Absturz
   ok   S01: Statustext <= 255 Byte
   ok   S01: Grenzen (Timer<=5, RPC<=5, Handler<=5, Speicher je Eintrag <= 1024 Byte)
-  -- S01_inbetriebnahme (0.0 s)
+  -- S01_inbetriebnahme (0.1 s)
   ok   S02 Läufe vorhanden
   ok   S02 alle Starts zwischen 10:00 und 10:05
   ok   S02 höchstens ein Lauf je Tag
@@ -22,14 +22,14 @@
   ok   S02: kein Absturz
   ok   S02: Statustext <= 255 Byte
   ok   S02: Grenzen (Timer<=5, RPC<=5, Handler<=5, Speicher je Eintrag <= 1024 Byte)
-  -- S02_sommerwoche (28.8 s)
+  -- S02_sommerwoche (22.6 s)
   ok   S03 am Regentag (Prognose 14 mm, 85 %) nicht gegossen
   ok   S03 Status nennt Grund
   ok   S03 Regen verbucht (Konto klein)
   ok   S03: kein Absturz
   ok   S03: Statustext <= 255 Byte
   ok   S03: Grenzen (Timer<=5, RPC<=5, Handler<=5, Speicher je Eintrag <= 1024 Byte)
-  -- S03_regenprognose (19.3 s)
+  -- S03_regenprognose (9.5 s)
   ok   S04 Handgabe: Timer gesetzt (6 mm)
   ok   S04 Handgabe lief so lange wie 6 mm und endete
   ok   S04 Stopp per Taster nach 20 min
@@ -37,7 +37,7 @@
   ok   S04: kein Absturz
   ok   S04: Statustext <= 255 Byte
   ok   S04: Grenzen (Timer<=5, RPC<=5, Handler<=5, Speicher je Eintrag <= 1024 Byte)
-  -- S04_taster (2.6 s)
+  -- S04_taster (1.6 s)
   ok   S05 Automatiklauf gestartet
   ok   S05 Trockenlauf in < 20 s abgeschaltet
   ok   S05 Nachlauf geplant
@@ -48,17 +48,17 @@
   ok   S05: kein Absturz
   ok   S05: Statustext <= 255 Byte
   ok   S05: Grenzen (Timer<=5, RPC<=5, Handler<=5, Speicher je Eintrag <= 1024 Byte)
-  -- S05_trockenlauf (5.0 s)
+  -- S05_trockenlauf (2.2 s)
   ok   S06 flatternde Leistung (Luft) erkannt
   ok   S06: kein Absturz
   ok   S06: Statustext <= 255 Byte
   ok   S06: Grenzen (Timer<=5, RPC<=5, Handler<=5, Speicher je Eintrag <= 1024 Byte)
-  -- S06_luftgemisch (0.6 s)
+  -- S06_luftgemisch (0.3 s)
   ok   S07 zugedrehter Hahn nach Anlaufzeit erkannt (<= 60 s)
   ok   S07: kein Absturz
   ok   S07: Statustext <= 255 Byte
   ok   S07: Grenzen (Timer<=5, RPC<=5, Handler<=5, Speicher je Eintrag <= 1024 Byte)
-  -- S07_hahn_zu (0.5 s)
+  -- S07_hahn_zu (0.3 s)
   ok   S08 Blockade binnen 5 s abgeschaltet (Firmware 12 A)
   ok   S08 Störung beim Anlauf: ein Nachlauf nach 6 min geplant
   ok   S08 nach Nachlauf Schluss für heute
@@ -69,7 +69,7 @@
   ok   S08b: kein Absturz
   ok   S08b: Statustext <= 255 Byte
   ok   S08b: Grenzen (Timer<=5, RPC<=5, Handler<=5, Speicher je Eintrag <= 1024 Byte)
-  -- S08_blockiert (1.4 s)
+  -- S08_blockiert (0.8 s)
   ok   S09 Pumpe zieht keinen Strom: Abschaltung <= 10 s
   ok   S09 Status nennt Ursache
   ok   S09: kein Absturz
@@ -79,7 +79,7 @@
   ok   S09b: kein Absturz
   ok   S09b: Statustext <= 255 Byte
   ok   S09b: Grenzen (Timer<=5, RPC<=5, Handler<=5, Speicher je Eintrag <= 1024 Byte)
-  -- S09_keine_last (2.1 s)
+  -- S09_keine_last (1.1 s)
   ok   S10 Alarm im Status
   ok   S10 Skript schickt erneut AUS
   ok   S10 Alarm verschwindet, wenn Strom weg
@@ -95,20 +95,20 @@
   ok   S11: kein Absturz
   ok   S11: Statustext <= 255 Byte
   ok   S11: Grenzen (Timer<=5, RPC<=5, Handler<=5, Speicher je Eintrag <= 1024 Byte)
-  -- S11_stromausfall_ohne_internet (12.6 s)
+  -- S11_stromausfall_ohne_internet (8.1 s)
   ok   S12 Lauf aktiv vor Ausfall
   ok   S12 nach Ausfall kein Wiederanlauf am selben Tag
   ok   S12 Teilmenge gutgeschrieben (Stand nach 1 h)
   ok   S12: kein Absturz
   ok   S12: Statustext <= 255 Byte
   ok   S12: Grenzen (Timer<=5, RPC<=5, Handler<=5, Speicher je Eintrag <= 1024 Byte)
-  -- S12_stromausfall_im_lauf (1.1 s)
+  -- S12_stromausfall_im_lauf (0.7 s)
   ok   S13 ohne Internet weiter entschieden
   ok   S13 nach Rückkehr alle Tage mit echten Daten verbucht
   ok   S13: kein Absturz
   ok   S13: Statustext <= 255 Byte
   ok   S13: Grenzen (Timer<=5, RPC<=5, Handler<=5, Speicher je Eintrag <= 1024 Byte)
-  -- S13_internet_3_tage_weg (21.5 s)
+  -- S13_internet_3_tage_weg (14.0 s)
   ok   S14 März: Prüfung immer 10:00-10:01 Ortszeit
   ok   S14 Oktober: Prüfung immer 10:00-10:01 Ortszeit
   ok   S14: kein Absturz
@@ -117,7 +117,7 @@
   ok   S14b: kein Absturz
   ok   S14b: Statustext <= 255 Byte
   ok   S14b: Grenzen (Timer<=5, RPC<=5, Handler<=5, Speicher je Eintrag <= 1024 Byte)
-  -- S14_zeitumstellung (29.7 s)
+  -- S14_zeitumstellung (27.4 s)
   ok   S15 Februar: keine Automatik
   ok   S15 Status Winterpause
   ok   S15 März: Automatik läuft wieder (Konto ab 0)
@@ -128,7 +128,7 @@
   ok   S15b: kein Absturz
   ok   S15b: Statustext <= 255 Byte
   ok   S15b: Grenzen (Timer<=5, RPC<=5, Handler<=5, Speicher je Eintrag <= 1024 Byte)
-  -- S15_saison (26.3 s)
+  -- S15_saison (25.7 s)
   ok   S16 Frostnacht, Luft bleibt kalt: kein Lauf
   ok   S16 Status Frostsperre bis 5 °C
   ok   S16 stündlich nachgesehen (11:05, 12:05)
@@ -151,18 +151,18 @@
   ok   S17: kein Absturz
   ok   S17: Statustext <= 255 Byte
   ok   S17: Grenzen (Timer<=5, RPC<=5, Handler<=5, Speicher je Eintrag <= 1024 Byte)
-  -- S17_pause (5.2 s)
+  -- S17_pause (6.5 s)
   ok   S18 Automatik aus: kein Lauf
   ok   S18 Taster geht trotzdem
   ok   S18: kein Absturz
   ok   S18: Statustext <= 255 Byte
   ok   S18: Grenzen (Timer<=5, RPC<=5, Handler<=5, Speicher je Eintrag <= 1024 Byte)
-  -- S18_automatik_aus (2.7 s)
+  -- S18_automatik_aus (2.9 s)
   ok   S19 9 mm bei 9 mm/h = 60 min
   ok   S19: kein Absturz
   ok   S19: Statustext <= 255 Byte
   ok   S19: Grenzen (Timer<=5, RPC<=5, Handler<=5, Speicher je Eintrag <= 1024 Byte)
-  -- S19_regenrate (0.6 s)
+  -- S19_regenrate (0.5 s)
   ok   S20 Knopf im Bedienfeld: angelernte Werte verworfen
   ok   S20 danach lernt ein Lauf nichts: Voreinstellung 600/2100 W
   ok   S20: kein Absturz
@@ -185,18 +185,18 @@
   ok   S22: kein Absturz
   ok   S22: Statustext <= 255 Byte
   ok   S22: Grenzen (Timer<=5, RPC<=5, Handler<=5, Speicher je Eintrag <= 1024 Byte)
-  -- S22_erststart_ohne_internet (23.8 s)
+  -- S22_erststart_ohne_internet (21.3 s)
   ok   S23 Lauf übernommen, Timer nicht verlängert
   ok   S23: kein Absturz
   ok   S23: Statustext <= 255 Byte
   ok   S23: Grenzen (Timer<=5, RPC<=5, Handler<=5, Speicher je Eintrag <= 1024 Byte)
-  -- S23_skript_neustart_im_lauf (0.1 s)
+  -- S23_skript_neustart_im_lauf (0.0 s)
   ok   S24 nach 2 kaputten Antworten trotzdem entschieden
   ok   S24 kein Absturz durch kaputtes JSON
   ok   S24: kein Absturz
   ok   S24: Statustext <= 255 Byte
   ok   S24: Grenzen (Timer<=5, RPC<=5, Handler<=5, Speicher je Eintrag <= 1024 Byte)
-  -- S24_kaputte_wetterantwort (0.8 s)
+  -- S24_kaputte_wetterantwort (0.5 s)
   ok   S26 Winterpause: Taster startet Handgabe (6 mm)
   ok   S26 Pause: keine Automatik, Taster startet
   ok   S26 Frostsperre: keine Automatik, Taster startet
@@ -218,7 +218,7 @@
   ok   S26e: kein Absturz
   ok   S26e: Statustext <= 255 Byte
   ok   S26e: Grenzen (Timer<=5, RPC<=5, Handler<=5, Speicher je Eintrag <= 1024 Byte)
-  -- S26_taster_sperren_spaete_pruefung (2.4 s)
+  -- S26_taster_sperren_spaete_pruefung (1.6 s)
   ok   S27 jede Handgabe einzeln, keine summiert sich
   ok   S27 Konto nie unter 0 oder über 25 mm
   ok   S27 nichts bleibt hängen (kein Nachlauf, keine Pause)
@@ -229,7 +229,7 @@
   ok   S27: kein Absturz
   ok   S27: Statustext <= 255 Byte
   ok   S27: Grenzen (Timer<=5, RPC<=5, Handler<=5, Speicher je Eintrag <= 1024 Byte)
-  -- S27_taster_mehrfach_und_stopp_vom_pc (30.8 s)
+  -- S27_taster_mehrfach_und_stopp_vom_pc (25.1 s)
   ok   S28 LED grün, volle Helligkeit, wenn alles gut
   ok   S28 LED blau, solange die Pumpe läuft
   ok   S28 LED rot nach Störung
@@ -241,7 +241,7 @@
   ok   S28: kein Absturz
   ok   S28: Statustext <= 255 Byte
   ok   S28: Grenzen (Timer<=5, RPC<=5, Handler<=5, Speicher je Eintrag <= 1024 Byte)
-  -- S28_led (7.0 s)
+  -- S28_led (7.6 s)
   ok   S29 Wächter-Zeitplan angelegt
   ok   S29 Firmware-Update angelegt: täglich 03:23, neueste stabile
   ok   S29 Neustart legt keine weiteren an
@@ -250,7 +250,7 @@
   ok   S29: kein Absturz
   ok   S29: Statustext <= 255 Byte
   ok   S29: Grenzen (Timer<=5, RPC<=5, Handler<=5, Speicher je Eintrag <= 1024 Byte)
-  -- S29_waechter (8.4 s)
+  -- S29_waechter (7.3 s)
   ok   S30 Regen angekündigt: um 10:00 keine Gabe
   ok   S30 Regen bei der Nachprüfung 11:05 abgesagt: sofort nachgeholt
   ok   S30 Status nennt die Absage
@@ -267,7 +267,7 @@
   ok   S30c: kein Absturz
   ok   S30c: Statustext <= 255 Byte
   ok   S30c: Grenzen (Timer<=5, RPC<=5, Handler<=5, Speicher je Eintrag <= 1024 Byte)
-  -- S30_regen_angekuendigt_nicht_gekommen (4.2 s)
+  -- S30_regen_angekuendigt_nicht_gekommen (3.4 s)
   ok   S31 ohne Wetterdienst jede Woche gegossen (8 Wochen)
   ok   S31 gegossene Menge passt zur geschätzten Verdunstung (±25 %)
   ok   S31 Status ohne Internet
@@ -277,7 +277,7 @@
   ok   S31: kein Absturz
   ok   S31: Statustext <= 255 Byte
   ok   S31: Grenzen (Timer<=5, RPC<=5, Handler<=5, Speicher je Eintrag <= 1024 Byte)
-  -- S31_wochenlang_ohne_wetterdienst (156.0 s)
+  -- S31_wochenlang_ohne_wetterdienst (183.2 s)
   ok   S32 Eigenwärme gelernt (Tief ~25 K, Hoch ~25 K)
   ok   S32 Frostnacht ohne Internet (1 °C, Gerät ~26 °C): vormittags kein Lauf
   ok   S32 ohne Internet: gegossen, sobald der Gerätefühler 5 °C Luft zeigt (12:05)
@@ -285,13 +285,13 @@
   ok   S32: kein Absturz
   ok   S32: Statustext <= 255 Byte
   ok   S32: Grenzen (Timer<=5, RPC<=5, Handler<=5, Speicher je Eintrag <= 1024 Byte)
-  -- S32_frost_ohne_internet_eigenwaerme (16.0 s)
+  -- S32_frost_ohne_internet_eigenwaerme (18.6 s)
   ok   S33 Hitzetag ohne Internet: mehr verbucht als das Monatsmittel
   ok   S33 kühler Tag ohne Internet: weniger verbucht
   ok   S33: kein Absturz
   ok   S33: Statustext <= 255 Byte
   ok   S33: Grenzen (Timer<=5, RPC<=5, Handler<=5, Speicher je Eintrag <= 1024 Byte)
-  -- S33_verdunstung_ohne_internet_nach_temperatur (13.6 s)
+  -- S33_verdunstung_ohne_internet_nach_temperatur (13.4 s)
   ok   S34 Uhr am Tagesgang nachgestellt
   ok   S34 vor dem Stellen nie vor 10:00
   ok   S34 nach dem Stellen vormittags gegossen (09:30 bis 11:30)
@@ -303,12 +303,12 @@
   ok   S34b: kein Absturz
   ok   S34b: Statustext <= 255 Byte
   ok   S34b: Grenzen (Timer<=5, RPC<=5, Handler<=5, Speicher je Eintrag <= 1024 Byte)
-  -- S34_uhr_nach_tagesgang (24.1 s)
+  -- S34_uhr_nach_tagesgang (22.8 s)
   ok   S35 Prüfung nach der Handgabe: Rest sofort gegossen
   ok   S35: kein Absturz
   ok   S35: Statustext <= 255 Byte
   ok   S35: Grenzen (Timer<=5, RPC<=5, Handler<=5, Speicher je Eintrag <= 1024 Byte)
-  -- S35_handgabe_um_zehn (0.4 s)
+  -- S35_handgabe_um_zehn (0.5 s)
   ok   S36 Automatiklauf läuft
   ok   S36 Automatik aus: laufende Automatikgabe endet
   ok   S36 Gegossenes angerechnet, kein Nachlauf
@@ -316,14 +316,14 @@
   ok   S36: kein Absturz
   ok   S36: Statustext <= 255 Byte
   ok   S36: Grenzen (Timer<=5, RPC<=5, Handler<=5, Speicher je Eintrag <= 1024 Byte)
-  -- S36_automatik_aus_beendet_lauf (0.3 s)
+  -- S36_automatik_aus_beendet_lauf (0.4 s)
   ok   S37 nach Skript-Neustart weiter „Uhr geschätzt“
   ok   S37 Uhr am Tagesgang gestellt, danach vormittags gegossen
   ok   S37 Zeitserver zurück: Uhr wieder echt
   ok   S37: kein Absturz
   ok   S37: Statustext <= 255 Byte
   ok   S37: Grenzen (Timer<=5, RPC<=5, Handler<=5, Speicher je Eintrag <= 1024 Byte)
-  -- S37_skript_neustart_bei_geschaetzter_uhr (17.1 s)
+  -- S37_skript_neustart_bei_geschaetzter_uhr (16.6 s)
   ok   S38 Zeitserver gesperrt: Uhr geschätzt (nachgehend), LED erst nach 30 min gelb
   ok   S38 mit geschätzter Uhr nie vor 10:00 gegossen
   ok   S38 Zeitserver zurück: Uhr echt
@@ -349,7 +349,7 @@
   ok   S38e: kein Absturz
   ok   S38e: Statustext <= 255 Byte
   ok   S38e: Grenzen (Timer<=5, RPC<=5, Handler<=5, Speicher je Eintrag <= 1024 Byte)
-  -- S38_nur_zeitserver (39.5 s)
+  -- S38_nur_zeitserver (42.0 s)
   ok   S39 Deckel statt Prognose: Folgetag zählt die Regenprognose
   ok   S39b nach Absage bei der Nachprüfung: Folgetag zählt die Regenprognose
   ok   S39c Abruf bis nach 12:30: kein Start mehr
@@ -362,12 +362,12 @@
   ok   S39c: kein Absturz
   ok   S39c: Statustext <= 255 Byte
   ok   S39c: Grenzen (Timer<=5, RPC<=5, Handler<=5, Speicher je Eintrag <= 1024 Byte)
-  -- S39_regenprognose_und_deckel (5.3 s)
+  -- S39_regenprognose_und_deckel (5.9 s)
   ok   S40 Eigenwärme nicht aus verschobenen Tagen gelernt
   ok   S40: kein Absturz
   ok   S40: Statustext <= 255 Byte
   ok   S40: Grenzen (Timer<=5, RPC<=5, Handler<=5, Speicher je Eintrag <= 1024 Byte)
-  -- S40_eigenwaerme_nach_uhrsprung (7.6 s)
+  -- S40_eigenwaerme_nach_uhrsprung (8.0 s)
   ok   S41 Ort aufgelöst und gespeichert
   ok   S41 Wetter für den Ort, Zeitzone des Ortes
   ok   S41 nach Neustart keine neue Ortsabfrage
@@ -387,12 +387,12 @@
   ok   S41d: kein Absturz
   ok   S41d: Statustext <= 255 Byte
   ok   S41d: Grenzen (Timer<=5, RPC<=5, Handler<=5, Speicher je Eintrag <= 1024 Byte)
-  -- S41_ort_einstellen (3.0 s)
+  -- S41_ort_einstellen (4.4 s)
   ok   S42 Tiefstwert fehlt: Frostsperre über den Gerätefühler, gegossen erst ab 5 °C Luft
   ok   S42: kein Absturz
   ok   S42: Statustext <= 255 Byte
   ok   S42: Grenzen (Timer<=5, RPC<=5, Handler<=5, Speicher je Eintrag <= 1024 Byte)
-  -- S42_frostwert_fehlt (2.4 s)
+  -- S42_frostwert_fehlt (2.8 s)
   ok   S43 Abschaltung beim Anlauf als Störung gemeldet
   ok   S43 LED rot
   ok   S43 Nachlauf nach 6 min mit voller Menge
@@ -404,7 +404,7 @@
   ok   S43b: kein Absturz
   ok   S43b: Statustext <= 255 Byte
   ok   S43b: Grenzen (Timer<=5, RPC<=5, Handler<=5, Speicher je Eintrag <= 1024 Byte)
-  -- S43_anlauf_und_wiedereinschalten (5.3 s)
+  -- S43_anlauf_und_wiedereinschalten (5.5 s)
   ok   S44 Korrektur nach Ausfall am Deckel stimmt
   ok   S44b nach Gabe am Deckel: Folgetag 13,8 mm
   ok   S44: kein Absturz
@@ -413,7 +413,7 @@
   ok   S44b: kein Absturz
   ok   S44b: Statustext <= 255 Byte
   ok   S44b: Grenzen (Timer<=5, RPC<=5, Handler<=5, Speicher je Eintrag <= 1024 Byte)
-  -- S44_konto_am_deckel (20.5 s)
+  -- S44_konto_am_deckel (21.7 s)
   ok   S45 ohne Rückruf: am selben Tag ohne Internet entschieden und gegossen
   ok   S45 vier Abrufe, nicht Dauerfeuer
   ok   S45b Nachprüfung nach Neustart: um 11:05 gegossen
@@ -423,12 +423,12 @@
   ok   S45b: kein Absturz
   ok   S45b: Statustext <= 255 Byte
   ok   S45b: Grenzen (Timer<=5, RPC<=5, Handler<=5, Speicher je Eintrag <= 1024 Byte)
-  -- S45_rueckruf_fehlt_nachpruefung_neustart (1.1 s)
+  -- S45_rueckruf_fehlt_nachpruefung_neustart (1.8 s)
   ok   S46 Konto neu: 14 Tage April, Regen am 8.
   ok   S46: kein Absturz
   ok   S46: Statustext <= 255 Byte
   ok   S46: Grenzen (Timer<=5, RPC<=5, Handler<=5, Speicher je Eintrag <= 1024 Byte)
-  -- S46_ueber_winter_ausgesteckt (0.5 s)
+  -- S46_ueber_winter_ausgesteckt (0.8 s)
   ok   S47 Wächter alle 5 min, aktiv
   ok   S47 stündliches Nachstellen schreibt nichts, solange alles stimmt
   ok   S47 binnen 1 h: Wächter wieder aktiv, alle 5 min
@@ -451,12 +451,12 @@
   ok   S48b: kein Absturz
   ok   S48b: Statustext <= 255 Byte
   ok   S48b: Grenzen (Timer<=5, RPC<=5, Handler<=5, Speicher je Eintrag <= 1024 Byte)
-  -- S48_korrektur_nach_regen (19.2 s)
+  -- S48_korrektur_nach_regen (20.2 s)
   ok   S49 ungelernt, Frostnacht ohne Internet: kein Lauf in der Kälte
   ok   S49: kein Absturz
   ok   S49: Statustext <= 255 Byte
   ok   S49: Grenzen (Timer<=5, RPC<=5, Handler<=5, Speicher je Eintrag <= 1024 Byte)
-  -- S49_frost_eigenwaerme_ungelernt (2.3 s)
+  -- S49_frost_eigenwaerme_ungelernt (2.7 s)
   ok   S50 Frost, Neustart, Abruf scheitert: Gerätefühler entscheidet, um 12:05 gegossen
   ok   S50b Frost, dann Regen, dann Absage: Texte passen
   ok   S50c Regen, dann abgesagt: „Regen abgesagt“
@@ -469,7 +469,7 @@
   ok   S50c: kein Absturz
   ok   S50c: Statustext <= 255 Byte
   ok   S50c: Grenzen (Timer<=5, RPC<=5, Handler<=5, Speicher je Eintrag <= 1024 Byte)
-  -- S50_nachpruefung_gruende (4.2 s)
+  -- S50_nachpruefung_gruende (5.2 s)
   ok   S51 nach Störung rot
   ok   S51 Fehler beim Zurückstellen nach dem nächsten fehlerfreien Lauf: binnen 2 h doch grün
   ok   S51: kein Absturz
@@ -490,7 +490,7 @@
   ok   S52b: kein Absturz
   ok   S52b: Statustext <= 255 Byte
   ok   S52b: Grenzen (Timer<=5, RPC<=5, Handler<=5, Speicher je Eintrag <= 1024 Byte)
-  -- S52_fehler_im_rueckruf (1.2 s)
+  -- S52_fehler_im_rueckruf (1.3 s)
   ok   S53 Griffe fehlen: Skript läuft ohne Bedienfeld
   ok   S53 LED schon gesetzt, Bedienfeld noch nicht
   ok   S53 binnen Minuten verbunden, Status sichtbar
@@ -501,7 +501,7 @@
   ok   S53: kein Absturz
   ok   S53: Statustext <= 255 Byte
   ok   S53: Grenzen (Timer<=5, RPC<=5, Handler<=5, Speicher je Eintrag <= 1024 Byte)
-  -- S53_bedienfeld_spaet (6.2 s)
+  -- S53_bedienfeld_spaet (7.0 s)
   ok   S54 Seite: Text in UTF-8, Uhrzeit, LED wechselt erst nach 30 min auf grün
   ok   S54 letzte Störung erledigt, Saison gezählt, letzte Meldungen neueste zuerst
   ok   S54b nach Stromausfall: Störung und Saison erhalten, Neustart mit letztem Stand davor
@@ -528,14 +528,14 @@
   ok   S54h: kein Absturz
   ok   S54h: Statustext <= 255 Byte
   ok   S54h: Grenzen (Timer<=5, RPC<=5, Handler<=5, Speicher je Eintrag <= 1024 Byte)
-  -- S54_diagnose (13.9 s)
+  -- S54_diagnose (15.6 s)
   ok   S55 Trockenlauf: LED rot
   ok   S55 nach Neustart und Mitternacht: weiter rot, Status nennt die Störung
   ok   S55 nächster Lauf fehlerfrei: LED grün, Störung erledigt
   ok   S55: kein Absturz
   ok   S55: Statustext <= 255 Byte
   ok   S55: Grenzen (Timer<=5, RPC<=5, Handler<=5, Speicher je Eintrag <= 1024 Byte)
-  -- S55_led_letzte_stoerung (2.4 s)
+  -- S55_led_letzte_stoerung (3.0 s)
   ok   S56 Speicher: höchstens 1 je Minute, nach 48 im Tagesfenster 1 je Stunde
   ok   S56 nach dem Sturm: letzter Stand geschrieben
   ok   S56b Einstellungen: höchstens 30 Schreibversuche am Tag, Bremse gemeldet
@@ -549,11 +549,11 @@
   ok   S56c: kein Absturz
   ok   S56c: Statustext <= 255 Byte
   ok   S56c: Grenzen (Timer<=5, RPC<=5, Handler<=5, Speicher je Eintrag <= 1024 Byte)
-  -- S56_schreibbremse (8.0 s)
+  -- S56_schreibbremse (8.7 s)
   ok   S57 Handgabe bei 5 mm/h: Timer 120 min statt 180, 10 mm gutgeschrieben
   ok   S57b Skript steht: Firmware schaltet nach 120 min ab
   ok   S57c Automatik 15 mm in 105 min, danach Handgabe 6 mm in 42 min
-  ok   S57d Taster bei stehendem Skript: übernommen und nach 120 min ab Beginn aus
+  ok   S57d Taster bei stehendem Skript: gewöhnliche Handgabe ab dem Skriptstart, höchstens 120 min ab Beginn
   ok   S57e Automatik bei 6 mm/h: 120 statt 150 min, Skript-Neustart nach 100 min: läuft seine 120 min zu Ende
   ok   S57: kein Absturz
   ok   S57: Statustext <= 255 Byte
@@ -567,14 +567,14 @@
   ok   S57e: kein Absturz
   ok   S57e: Statustext <= 255 Byte
   ok   S57e: Grenzen (Timer<=5, RPC<=5, Handler<=5, Speicher je Eintrag <= 1024 Byte)
-  -- S57_laufzeit_120_min (1.7 s)
+  -- S57_laufzeit_120_min (2.0 s)
   ok   S58 abgelehnt: Störung in der Statuszeile, neue Versuche bis 12:30, LED rot
   ok   S58 bis 12:30 abgelehnt: kein Lauf, nächster Versuch morgen, je Minute höchstens 2 Versuche
   ok   S58 am Folgetag gegossen: LED grün, Störung erledigt
   ok   S58: kein Absturz
   ok   S58: Statustext <= 255 Byte
   ok   S58: Grenzen (Timer<=5, RPC<=5, Handler<=5, Speicher je Eintrag <= 1024 Byte)
-  -- S58_einschalten_abgelehnt (2.4 s)
+  -- S58_einschalten_abgelehnt (2.7 s)
   ok   S59 Uhr gestellt, während der Wetterabruf läuft: Antwort verworfen, Tage verschoben, kein Lauf am ersten Tag
   ok   S59b Absturzschleife ohne Internet: je Tag eine Gabe, Tagesprüfung gespeichert
   ok   S59: kein Absturz
@@ -583,7 +583,7 @@
   ok   S59b: kein Absturz
   ok   S59b: Statustext <= 255 Byte
   ok   S59b: Grenzen (Timer<=5, RPC<=5, Handler<=5, Speicher je Eintrag <= 1024 Byte)
-  -- S59_pruefer_uhr_und_speicher (5.3 s)
+  -- S59_pruefer_uhr_und_speicher (4.4 s)
   ok   S60 Bremse für das Bedienfeld erschöpft: LED trotzdem rot, Notabschaltung binnen 1 h zurück
   ok   S60: kein Absturz
   ok   S60: Statustext <= 255 Byte
@@ -605,7 +605,7 @@
   ok   S61d: kein Absturz
   ok   S61d: Statustext <= 255 Byte
   ok   S61d: Grenzen (Timer<=5, RPC<=5, Handler<=5, Speicher je Eintrag <= 1024 Byte)
-  -- S61_led_schreibvorgaenge (23.2 s)
+  -- S61_led_schreibvorgaenge (26.3 s)
   ok   S62 Einschalten am Folgetag wieder abgelehnt: Störung neu datiert
   ok   S62b WLAN erst nach dem Hochfahren: nach 4 min kein „ohne Internet“, keine LED-Schreibvorgänge
   ok   S62: kein Absturz
@@ -614,12 +614,12 @@
   ok   S62b: kein Absturz
   ok   S62b: Statustext <= 255 Byte
   ok   S62b: Grenzen (Timer<=5, RPC<=5, Handler<=5, Speicher je Eintrag <= 1024 Byte)
-  -- S62_pruefer_rest (3.2 s)
+  -- S62_pruefer_rest (3.6 s)
   ok   S63a 5 Drücke in der ersten Minute: Anlernen läuft, Firmware-Timer 300 s
-  ok   S63a Signal: 60 s nach dem Anlernbeginn 2-3 s aus
+  ok   S63a nach 1 min: Statuszeile „jetzt Hahn zudrehen“
+  ok   S63a kein Aus-Ein-Signal: das Relais bleibt bis zum Ende an (kein Rückschlagventil)
   ok   S63a übernommen: normal ~1320 W, Hahn zu ~818 W, Untergrenze in der Mitte ~1069 W, danach aus
-  ok   S63a nach dem Signal: Firmware-Timer auf den Rest der 300 s
-  ok   S63a Status-Abo nach 90 s beendet (Handle 0)
+  ok   S63a Status-Abo nach der ersten Minute beendet (Handle 0)
   ok   S63a Diagnose: angelernt mit Datum, beide Werte, Grenzen
   ok   S63a danach: Handgabe läuft bei offenem Hahn, zugedreht nach ~8 s aus (Unterlast)
   ok   S63a nach Stromausfall: angelernte Werte und Störung gespeichert
@@ -627,22 +627,25 @@
   ok   S63a: kein Absturz
   ok   S63a: Statustext <= 255 Byte
   ok   S63a: Grenzen (Timer<=5, RPC<=5, Handler<=5, Speicher je Eintrag <= 1024 Byte)
-  ok   S63b nicht zugedreht: normal übernommen, Untergrenze 75 % (990 W), Diagnose „Hahn zu nicht erkannt“
+  ok   S63b nicht zugedreht: nach 3 min übernommen, Untergrenze 75 % (990 W), Diagnose „Hahn zu nicht erkannt“
   ok   S63c Hahn zu nur 14 % weniger: nicht erkennbar, Untergrenze 75 %
   ok   S63c Hahn zu 22 % weniger: Untergrenze in der Mitte, zu beiden Seiten mindestens 10 % Abstand
   ok   S63d kleine Pumpe 400 W: angelernt (Hahn zu ~248 W), Trockenlauf danach erkannt
+  ok   S63e Abbruch ist eine Störung: LED binnen 15 s rot, nicht erst nach 2 min
   ok   S63e 250 W: abgebrochen, nichts übernommen, gespeichert im Störungsprotokoll
-  ok   S63e 2000 W zu viel, Luftgemisch unruhig: abgebrochen, nichts übernommen
+  ok   S63e 2000 W zu viel, Luftgemisch unruhig, im Messfenster zugedreht: abgebrochen, nichts übernommen
   ok   S63f Taster während des Anlernens: aus, abgebrochen, nichts übernommen, im Störungsprotokoll
-  ok   S63g nach der ersten Minute, langsamer als 20 s, nur 3 Drücke: kein Anlernen, eine Handgabe läuft
+  ok   S63g zu spät, 5. Druck nach der ersten Minute, nur 3 Drücke: kein Anlernen, eine Handgabe läuft
+  ok   S63g langsam, aber alle 5 in der ersten Minute: Anlernen; 1. Druck vor dem Skriptstart zählt mit
   ok   S63h Stromausfall: nichts übernommen; Automatik aus: Anlernen läuft durch
-  ok   S63i Relais bleibt nach dem Signal aus: abgebrochen; Skript steht: Firmware-Timer aus nach 300 s
+  ok   S63i Skript steht: Firmware-Timer aus nach 300 s
   ok   S63j Hahn beim Anlernen schon zu: übernommen, im Betrieb Überlast nach Anlauf
   ok   S63l Stecker 1,5 s nach dem Anlernen gezogen: Werte gespeichert
   ok   S63m Trockenlauf beim Anlernen, kleine Pumpe ohne Zudrehen: unter 600 W nichts übernommen
-  ok   S63n Druck in der Signalpause: abgebrochen, nichts übernommen
-  ok   S63n abgebrochenes Anlernen lässt die offene Störung stehen, gelungenes hebt sie auf
-  ok   S63n Überstrom beim Wiederanlauf nach dem Signal: Störung der Firmware, im Protokoll
+  ok   S63n abgebrochenes Anlernen lässt die offene Störung stehen, gelungenes hebt sie auf, LED gleich wieder grün
+  ok   S63n Blockade beim Anlernen: Störung, im Protokoll, nichts übernommen
+  ok   S63o Aus-Befehl zweimal verloren: nach gut 10 s doch aus (sonst Firmware-Timer)
+  ok   S63p Druck vor dem Skriptstart: normale Handgabe (Timer wie eine Handgabe, nicht 120 min)
   ok   S63-0: kein Absturz
   ok   S63-0: Statustext <= 255 Byte
   ok   S63-0: Grenzen (Timer<=5, RPC<=5, Handler<=5, Speicher je Eintrag <= 1024 Byte)
@@ -712,12 +715,21 @@
   ok   S63-22: kein Absturz
   ok   S63-22: Statustext <= 255 Byte
   ok   S63-22: Grenzen (Timer<=5, RPC<=5, Handler<=5, Speicher je Eintrag <= 1024 Byte)
+  ok   S63-23: kein Absturz
+  ok   S63-23: Statustext <= 255 Byte
+  ok   S63-23: Grenzen (Timer<=5, RPC<=5, Handler<=5, Speicher je Eintrag <= 1024 Byte)
+  ok   S63-24: kein Absturz
+  ok   S63-24: Statustext <= 255 Byte
+  ok   S63-24: Grenzen (Timer<=5, RPC<=5, Handler<=5, Speicher je Eintrag <= 1024 Byte)
+  ok   S63-25: kein Absturz
+  ok   S63-25: Statustext <= 255 Byte
+  ok   S63-25: Grenzen (Timer<=5, RPC<=5, Handler<=5, Speicher je Eintrag <= 1024 Byte)
   -- S63_anlernen (0.2 s)
   ok   S64 größter Zustand und volles Störungsprotokoll: je Eintrag <= 1024 Byte, auch so geschrieben
   ok   S64: kein Absturz
   ok   S64: Statustext <= 255 Byte
   ok   S64: Grenzen (Timer<=5, RPC<=5, Handler<=5, Speicher je Eintrag <= 1024 Byte)
-  -- S64_speicher_gross (0.3 s)
+  -- S64_speicher_gross (0.4 s)
   ok   S25 Schreibvorgänge im Mittel <= 6/Tag
   ok   S25 Schreibvorgänge an einem Tag <= 12
   ok   S25 Bodenkonto (unabhängig gerechnet) nie über 20 mm
@@ -726,7 +738,35 @@
   ok   S25: kein Absturz
   ok   S25: Statustext <= 255 Byte
   ok   S25: Grenzen (Timer<=5, RPC<=5, Handler<=5, Speicher je Eintrag <= 1024 Byte)
-  -- S25_saison_langlauf (583.9 s)
+  -- S25_saison_langlauf (599.5 s)
+  ok   S65a offline, Eigenwärme ungelernt, kühle Nächte: gießt trotzdem (mindestens 2 Läufe in 6 Tagen)
+  ok   S65b Eigenwärme: drinnen nicht gelernt, draußen gelernt
+  ok   S65c Wetterabruf wirft dauernd: täglich geprüft und gegossen, höchstens ein Fehler je 15 min
+  ok   S65d Speicher schreibt nicht: einmal gemeldet, LED rot, Statuszeile nennt es
+  ok   S65e Fehler beim Start: Takt läuft, Handgabe überwacht (Trockenlauf erkannt)
+  ok   S65f Einschalten dauerhaft abgelehnt: in den letzten Meldungen höchstens einmal
+  ok   S65-0: kein Absturz
+  ok   S65-0: Statustext <= 255 Byte
+  ok   S65-0: Grenzen (Timer<=5, RPC<=5, Handler<=5, Speicher je Eintrag <= 1024 Byte)
+  ok   S65-1: kein Absturz
+  ok   S65-1: Statustext <= 255 Byte
+  ok   S65-1: Grenzen (Timer<=5, RPC<=5, Handler<=5, Speicher je Eintrag <= 1024 Byte)
+  ok   S65-2: kein Absturz
+  ok   S65-2: Statustext <= 255 Byte
+  ok   S65-2: Grenzen (Timer<=5, RPC<=5, Handler<=5, Speicher je Eintrag <= 1024 Byte)
+  ok   S65-3: kein Absturz
+  ok   S65-3: Statustext <= 255 Byte
+  ok   S65-3: Grenzen (Timer<=5, RPC<=5, Handler<=5, Speicher je Eintrag <= 1024 Byte)
+  ok   S65-4: kein Absturz
+  ok   S65-4: Statustext <= 255 Byte
+  ok   S65-4: Grenzen (Timer<=5, RPC<=5, Handler<=5, Speicher je Eintrag <= 1024 Byte)
+  ok   S65-5: kein Absturz
+  ok   S65-5: Statustext <= 255 Byte
+  ok   S65-5: Grenzen (Timer<=5, RPC<=5, Handler<=5, Speicher je Eintrag <= 1024 Byte)
+  ok   S65-6: kein Absturz
+  ok   S65-6: Statustext <= 255 Byte
+  ok   S65-6: Grenzen (Timer<=5, RPC<=5, Handler<=5, Speicher je Eintrag <= 1024 Byte)
+  -- S65_stabil (37.3 s)
 
 Details: {
  "S01_inbetriebnahme": {},
@@ -829,7 +869,7 @@ Details: {
  "S61_led_schreibvorgaenge": {},
  "S62_pruefer_rest": {},
  "S63_anlernen": {
-  "a": "14:00 Anlernen: Hahn offen lassen, Normalleistung wird gemessen | 14:01 Anlernen: Normalleistung 1321 W – Signal, jetzt Hahn zudrehen | 14:01 Angelernt: 1321 W, Hahn zu 829 W, Untergrenze 1075 W",
+  "a": "14:00 Anlernen: Hahn offen lassen, gut 1 min nach dem 5. Druck zudrehen | 14:01 Anlernen: Normalleistung 1321 W, jetzt Hahn zudrehen | 14:01 Angelernt: 1321 W, Hahn zu 819 W, Untergrenze 1070 W",
   "speicher": "{\"s\":549,\"f\":39}"
  },
  "S64_speicher_gross": {
@@ -844,9 +884,13 @@ Details: {
   "etc": "544",
   "rain": "518",
   "maxDeficit": "10.9"
+ },
+ "S65_stabil": {
+  "a": 3,
+  "b": "-99/13.9",
+  "c": "5/400"
  }
 }
-Längster Statustext: 212 Byte
+Längster Statustext: 209 Byte
 
-665 bestanden, 0 fehlgeschlagen  [bewaesserung.min.js]
-exit 0
+704 bestanden, 0 fehlgeschlagen  [bewaesserung.min.js]

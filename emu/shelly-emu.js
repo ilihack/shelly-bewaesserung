@@ -350,6 +350,7 @@ class World {
       },
       call(method, params, cb, ud) {
         if (w.throwOnce === method) { w.throwOnce = null; throw new Error('Too many calls in progress'); }   // Test
+        if (w.throwAlways === method) throw new Error('Too many calls in progress');                       // Test
         if (dev.rpcOpen >= 5) throw new Error('RPC-Limit 5 überschritten (' + method + ')');
         dev.rpcOpen++; w.limits.rpc = Math.max(w.limits.rpc, dev.rpcOpen);
         let res = null, err = 0, msg = '', lat = 30, post = null;
@@ -358,6 +359,7 @@ class World {
           switch (method) {
             case 'Switch.Set': {
               if (params.on && w.switchRefuse > 0) { w.switchRefuse--; err = -103; msg = 'overtemperature'; break; }   // Test
+              if (!params.on && w.offLost > 0) { w.offLost--; err = -114; msg = 'Too many calls in progress'; break; }  // Test
               w.setOutput(!!params.on, 'loopback', params.on ? params.toggle_after : null);
               res = { was_on: true }; break;
             }
