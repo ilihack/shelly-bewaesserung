@@ -698,8 +698,8 @@ scenarios.S33_verdunstung_ohne_internet_nach_temperatur = function () {
   w.run(T(2027, 6, 4, 22, 0)); w.httpFail = true;
   w.run(T(2027, 6, 7, 11, 0));
   const st = w.state(), e5 = st.xe[dayNo(T(2027, 6, 5, 12)) - st.xa], e6 = st.xe[dayNo(T(2027, 6, 6, 12)) - st.xa];
-  // ohne Internet +10 % (OFF_ET); der kühle Tag folgt auf den heißen, sein Höchstwert liegt darum kurz nach Mitternacht
-  const mittel = 4.5 * 0.85 * 1.1, hot = mittel * (1 + 0.06 * (35 - 26.3));
+  // ohne Internet +21 % (OFF_ET); der kühle Tag folgt auf den heißen, sein Höchstwert liegt darum kurz nach Mitternacht
+  const mittel = 4.5 * 0.85 * 1.21, hot = mittel * (1 + 0.06 * (35 - 26.3));
   check('S33 Hitzetag ohne Internet: mehr verbucht als das Monatsmittel', e5 > mittel + 1 && Math.abs(e5 - hot) <= 0.4,
     e5 + ' statt ' + hot.toFixed(1) + ' (Monatsmittel ' + mittel.toFixed(1) + ')');
   check('S33 kühler Tag ohne Internet: weniger verbucht', e6 < mittel * 0.7 && e6 >= mittel * 0.5 - 0.1, e6 + ' (Monatsmittel ' + mittel.toFixed(1) + ')');
@@ -1401,21 +1401,21 @@ scenarios.S56_schreibbremse = function () {
 };
 
 // ------------------------------------------------------------------
-scenarios.S57_handgabe_90_min = function () {
-  // Handgabe höchstens 90 min: zweite Grenze neben der Unterlast-Erkennung, falls ein zugedrehter Hahn unerkannt bleibt.
-  // Den Timer hält die Firmware: er wirkt auch, wenn das Skript steht.
-  // a) Regenrate 5 mm/h, Defizit 20 mm: 15 mm bräuchten 180 min, die Handgabe endet nach 90 min mit 7,5 mm
+scenarios.S57_laufzeit_120_min = function () {
+  // Jeder Lauf höchstens 120 min, Hand wie Automatik: zweite Grenze neben der Unterlast-Erkennung, falls ein zugedrehter
+  // Hahn unerkannt bleibt. Den Timer hält die Firmware: er wirkt auch, wenn das Skript steht.
+  // a) Regenrate 5 mm/h, Defizit 20 mm: 15 mm bräuchten 180 min, die Handgabe endet nach 120 min mit 10 mm
   const w = learnedWorld(T(2027, 6, 1, 13, 0));
   w.storage.s = JSON.stringify(Object.assign(JSON.parse(w.storage.s), { dp: dayNo(T(2027, 5, 31, 12)), d: 20, ev: dayNo(T(2027, 6, 1, 12)) }));
   w.powerFail(1000); w.runFor(2 * M); w.setVc('number:202', 5); w.runFor(30e3);
-  w.press(); w.runFor(2 * H);
+  w.press(); w.runFor(2 * H + 5 * M);
   const r = w.runs();
-  check('S57 Handgabe bei 5 mm/h: Timer 90 min statt 180, 7,5 mm gutgeschrieben', r.length === 1 && Math.abs(r[0].min - 90) < 0.2 &&
-    r[0].offSrc === 'timer' && Math.abs(w.state().pi - 7.5) < 0.1, runsInfo(w) + ' pi=' + w.state().pi);
-  // b) Skript steht während der Handgabe (Absturz): der Firmware-Timer schaltet trotzdem nach 90 min ab
-  w.press(); w.runFor(5 * M); w.stopScript(); w.runFor(2 * H);
+  check('S57 Handgabe bei 5 mm/h: Timer 120 min statt 180, 10 mm gutgeschrieben', r.length === 1 && Math.abs(r[0].min - 120) < 0.2 &&
+    r[0].offSrc === 'timer' && Math.abs(w.state().pi - 10) < 0.1, runsInfo(w) + ' pi=' + w.state().pi);
+  // b) Skript steht während der Handgabe (Absturz): der Firmware-Timer schaltet trotzdem nach 120 min ab
+  w.press(); w.runFor(5 * M); w.stopScript(); w.runFor(3 * H);
   const r2 = w.runs()[1];
-  check('S57b Skript steht: Firmware schaltet nach 90 min ab', r2 && Math.abs(r2.min - 90) < 0.2 && r2.offSrc === 'timer', runsInfo(w));
+  check('S57b Skript steht: Firmware schaltet nach 120 min ab', r2 && Math.abs(r2.min - 120) < 0.2 && r2.offSrc === 'timer', runsInfo(w));
   // c) kleine Handgabe bleibt, wie sie war (Defizit, mindestens 6 mm); die Automatik gibt weiter bis 15 mm (105 min)
   const w2 = learnedWorld(T(2027, 6, 1, 6, 30));
   w2.storage.s = JSON.stringify(Object.assign(JSON.parse(w2.storage.s), { dp: dayNo(T(2027, 5, 31, 12)), d: 20 }));
@@ -1425,21 +1425,21 @@ scenarios.S57_handgabe_90_min = function () {
   check('S57c Automatik 15 mm in 105 min, danach Handgabe 6 mm in 42 min', a2.length === 2 && Math.abs(a2[0].min - minFor(15)) < 0.5 &&
     Math.abs(a2[1].min - minFor(6)) < 0.5, runsInfo(w2));
   // d) Taster, während das Skript steht (Firmware-Notabschaltung 160 min): der Wächter startet es 4 min später, es
-  //    übernimmt den Lauf als Handgabe und kürzt den Timer: aus nach 90 min ab Beginn
+  //    übernimmt den Lauf als Handgabe und kürzt den Timer: aus nach 120 min ab Beginn
   const w3 = learnedWorld(T(2027, 6, 1, 13, 0));
   w3.powerFail(1000); w3.runFor(2 * M); w3.stopScript(); w3.runFor(M);
-  w3.press(); w3.runFor(4 * M); w3.fireSchedules(); w3.runFor(2 * H);
+  w3.press(); w3.runFor(4 * M); w3.fireSchedules(); w3.runFor(3 * H);
   const r3 = w3.runs();
-  check('S57d Taster bei stehendem Skript: übernommen und nach 90 min ab Beginn aus', r3.length === 1 && Math.abs(r3[0].min - 90) < 0.2 &&
+  check('S57d Taster bei stehendem Skript: übernommen und nach 120 min ab Beginn aus', r3.length === 1 && Math.abs(r3[0].min - 120) < 0.2 &&
     r3[0].offSrc === 'timer' && logHas(w3, /Pumpe an \(hand\)/), runsInfo(w3));
-  // e) eigener Automatiklauf 15 mm bei 6 mm/h (150 min), Skript-Neustart nach 100 min: läuft mit seinem Timer zu Ende
+  // e) Automatik 15 mm bei 6 mm/h bräuchte 150 min: geplant nur 120 min (12 mm); Skript-Neustart nach 100 min ändert nichts
   const w4 = learnedWorld(T(2027, 6, 1, 6, 30));
   w4.storage.s = JSON.stringify(Object.assign(JSON.parse(w4.storage.s), { dp: dayNo(T(2027, 5, 31, 12)), d: 20 }));
   w4.powerFail(1000); w4.runFor(2 * M); w4.setVc('number:202', 6);
   w4.run(T(2027, 6, 1, 11, 40)); w4.restartScript(); w4.run(T(2027, 6, 1, 14, 0));
   const r4 = w4.runs();
-  check('S57e eigener Automatiklauf über 90 min, Skript-Neustart nach 100 min: läuft seine 150 min', r4.length === 1 &&
-    Math.abs(r4[0].min - 150) < 0.5 && r4[0].offSrc === 'timer', runsInfo(w4));
+  check('S57e Automatik bei 6 mm/h: 120 statt 150 min, Skript-Neustart nach 100 min: läuft seine 120 min zu Ende', r4.length === 1 &&
+    Math.abs(r4[0].min - 120) < 0.5 && r4[0].offSrc === 'timer' && logHas(w4, /Pumpe an \(auto\), Ziel 12 mm in 120 min/), runsInfo(w4));
   common(w, 'S57'); common(w2, 'S57c'); common(w3, 'S57d'); common(w4, 'S57e');
 };
 

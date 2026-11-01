@@ -18,7 +18,7 @@
 ## Zustand: {"v":1,"t":1811923202,"d":3.4,"dp":20970,"pi":0,"ev":20971,"pn":1320,"ln":5,"pu":0,"fd":20970,"fc":1,"rt":0,"rm":11.2,"lr":"01.06. 18:00 Hand 6 mm","xa":-1,"xe":[],"xw":[],"xd":0,"ob":-99,"oa":-99,"df":0,"rd":-1,"rx":0,"rc":-1,"rk":0,"rf":0,"tu":90002,"ce":0,"cs":0,"fu":1811838009,"ft":"Trockenlauf oder Hahn zu (585 W < 990 W)","fo":0,"s0":20970,"sa":2,"sh":1,"sm":20,"sf":1,"io":0,"id":0,"os":0,"wu":90002,"wn":1,"wb":90002,"la":49.48,"lo":8.45,"pz":"DELudwigshafen am Rhein"}
 ## Status: Heute: nicht nötig (3,4 mm) · Zuletzt 01.06. 18:00 Hand 6 mm · Pumpe normal 1320 W
 ## Zeitplaene: [{"enable":true,"timespec":"0 */5 * * * *","calls":[{"method":"Script.Start","params":{"id":1}}],"id":1},{"enable":true,"timespec":"0 23 3 * * *","calls":[{"method":"Shelly.Update","params":{"stage":"stable"}}],"id":2}] | LED: {"leds":{"mode":"switch","colors":{"switch:0":{"on":{"rgb":[0,0,100],"brightness":100},"off":{"rgb":[0,100,0],"brightness":100}}}}}
-## Diagnose (200, 1252 Zeichen; Speicher davor 5027, mit Seite 5134 Bloecke)
+## Diagnose (200, 1252 Zeichen; Speicher davor 5025, mit Seite 5132 Bloecke)
 ## | Bewässerung 02.06.2027 11:00
 ## | 
 ## | Status: Heute: nicht nötig (3,4 mm) · Zuletzt 01.06. 18:00 Hand 6 mm · Pumpe normal 1320 W
@@ -44,5 +44,5 @@
 ## | 01.06. 10:00 Pumpe an (auto), Ziel 14 mm in 98 min
 ## | 01.06. 10:00 Tagesprüfung: Defizit 14 mm -> gegossen 14 mm
 ## | 01.06. 09:00 Ort Ludwigshafen am Rhein: 49.48, 8.45
-## Zahlen: Schreibvorgaenge 11, LED 3, Konfig 14, Fehler 0, RPC max 3, Timer max 1, Speicher max 5229 von 8192 Bloecken
+## Zahlen: Schreibvorgaenge 11, LED 3, Konfig 14, Fehler 0, RPC max 3, Timer max 1, Speicher max 5228 von 8192 Bloecken
 ## ENDE

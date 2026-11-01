@@ -6,7 +6,7 @@
  * Wetterantworten, Pumpe trocken/Hahn zu/blockiert/Luft/ohne Last/Abschaltung beim Anlauf, Tastendruck, Bedienfeld-Werte, Skript-Neustart
  * und -Absturz (der Wächter startet neu). Wetter zufällig, auch Frost und Starkregen.
  * Regeln: kein Absturz, Grenzen der Firmware, Statustext <= 255 Byte, Speicher gültig und <= 1024 Byte,
- * Konto 0..25 mm, kein Lauf länger als 161 min, eine vom Skript gesehene Handgabe höchstens 90 min, LED höchstens
+ * Konto 0..25 mm, kein Lauf länger als 161 min, ein vom Skript gestarteter oder gesehener Lauf höchstens 120 min, LED höchstens
  * 12 Wechsel in 24 h (je Skriptstart einer mehr); bei richtiger Uhr: Automatik nur 10:00 bis 12:30, nicht bei
  * Automatik aus, Pause oder Winterpause.
  */
@@ -88,16 +88,17 @@ function lauf(seed) {
   if (w.limits.timers > 5 || w.limits.rpc > 5 || w.limits.handlers > 5) fehler.push('Grenzen: ' + JSON.stringify(w.limits));
   if ((w.maxText || 0) > 255) fehler.push('Statustext ' + w.maxText + ' Byte');
   for (const x of w.runs()) if (x.min > 161) fehler.push('Lauf ' + x.min.toFixed(0) + ' min');
-  // Handgabe: höchstens 90 min ab Beginn, wenn das Skript sie beim Einschalten sah (Firmware-Timer). Stand das Skript,
-  // übernimmt sie der nächste Skriptstart und kürzt sie auf 90 min ab Beginn, oder schaltet gleich ab, wenn die um sind
+  // Jeder Lauf höchstens 120 min: eigene Läufe per Timer; eine Handgabe, wenn das Skript sie beim Einschalten sah. Stand das
+  // Skript, übernimmt sie der nächste Skriptstart und kürzt sie auf 120 min ab Beginn, oder schaltet gleich ab, wenn die um sind
   const handAn = w.logs.filter((l) => /Pumpe an \(hand\)/.test(l.msg)).map((l) => l.t);
   const starts0 = w.logs.filter((l) => /gestartet, Bodenkonto/.test(l.msg)).map((l) => l.t);
   for (const x of w.runs()) {
+    if (x.src === 'loopback' && x.off && x.min > 120.5) fehler.push('eigener Lauf ' + x.min.toFixed(1) + ' min');
     if (x.src !== 'button' || !x.off) continue;
     const gesehen = handAn.some((t) => Math.abs(t - x.on) <= 2000), st1 = starts0.find((t) => t > x.on + 2000);
     let grenze;
-    if (gesehen) grenze = 90.5;
-    else if (st1 !== undefined && st1 < x.off) grenze = Math.max(90.5, (st1 - x.on) / M + 0.5);
+    if (gesehen) grenze = 120.5;
+    else if (st1 !== undefined && st1 < x.off) grenze = Math.max(120.5, (st1 - x.on) / M + 0.5);
     else continue;                        // während des ganzen Laufs kein Skript: es bleibt die Notabschaltung (160 min)
     hand++;
     if (x.min > grenze) fehler.push('Handgabe ' + x.min.toFixed(1) + ' min' + (gesehen ? '' : ' (übernommen)'));

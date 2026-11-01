@@ -13,7 +13,7 @@ Ein Skript für den **Shelly Outdoor Plug S Gen3**: Der Stecker schaltet eine Br
 - **Schützt die Pumpe.** Es erkennt über die Leistung Trockenlauf, einen zugedrehten Hahn, Blockade, eine fehlende Last und ein klebendes Relais.
   - Die Normalleistung lernt es beim ersten Lauf selbst.
   - Nach einer Störung beim Anlauf startet es nach 6 min einen zweiten Versuch, nach anderen Störungen nach 60 min.
-  - Eine Handgabe endet nach spätestens 90 min, auch wenn das Skript danach stehen bleibt: eine zweite Grenze, falls ein zugedrehter Hahn unerkannt bleibt. Drückt man, während das Skript steht, kürzt es den Lauf beim nächsten Start auf 90 min ab Beginn.
+  - Jeder Lauf, Hand wie Automatik, endet nach spätestens 120 min, auch wenn das Skript danach stehen bleibt: eine zweite Grenze, falls ein zugedrehter Hahn unerkannt bleibt. Drückt man, während das Skript steht, kürzt es den Lauf beim nächsten Start auf 120 min ab Beginn.
   - Unabhängig vom Skript schaltet die Firmware das Relais nach 160 min ab.
 - **Hält sich selbst in Gang.** Ein Zeitplan der Firmware startet ein stehendes Skript binnen 5 min neu. Ein zweiter installiert jede Nacht um 03:23 die neueste stabile Firmware, falls es eine gibt.
   - Wächter, Einschaltzustand und Notabschaltung stellt das Skript stündlich nach, falls sie in der App verstellt wurden. Das Firmware-Update legt es nur an, wenn es keines gibt: In der App abgeschaltet, bleibt es aus.
@@ -126,6 +126,8 @@ In der Shelly-App keine eigenen Zeitpläne zum Schalten des Steckers anlegen. Di
 Bedient wird das Skript nur über das Gerät und die Shelly-App. Seine einzige eigene Adresse ist die Diagnose-Seite: Sie zeigt nur, schaltet nichts und steht hinter dem Gerätepasswort. Es ruft nur feste Adressen von Open-Meteo über https auf und prüft die Antworten auf Grenzen. Zu schützen ist das Gerät:
 - Ein **Gerätepasswort** setzen, beim Aufspielen mit `--neues-passwort` oder auf der Weboberfläche unter *Settings → Device settings → Authentication*. Ohne Passwort kann jeder im WLAN die Pumpe schalten oder das Skript ersetzen.
 - Das **Shelly-Konto** mit Zwei-Faktor-Anmeldung schützen, wenn die Cloud an ist.
+- Den **Access Point** braucht es im Betrieb nicht. Wird er am Zielort gebraucht: Stecker neu einstecken und binnen 1 min den Knopf 5 s halten, dann sind Access Point und Bluetooth an. Nicht 10 s halten: Das setzt den Stecker auf Werkseinstellung zurück, Skript und Einstellungen sind weg. Abschalten lässt sich dieser Reset nicht, er geht aber nur in der ersten Minute nach dem Einstecken.
+- Ein **zweites WLAN**, etwa ein Gast-WLAN, trägt man auf der Weboberfläche bei den WLAN-Einstellungen als Wi-Fi 2 ein; der Shelly nimmt es, wenn das erste nicht erreichbar ist. Ohne Gerätepasswort kann dann jeder in diesem WLAN die Pumpe schalten.
 - **Firmware aktuell halten:** Das erledigt der Update-Zeitplan jede Nacht. Nach einem großen Update (neue Hauptversion) das Aufspielwerkzeug nochmal laufen lassen; es prüft danach alles.
 
 ## Prüfen und Weiterentwickeln
@@ -135,7 +137,7 @@ Bedient wird das Skript nur über das Gerät und die Shelly-App. Seine einzige e
 | `npm run build` | Gerätefassung: nur ASCII, nur ES5, Stapel (nächste Zeile) und eingebaute Methoden. Der Shelly hat ein abgespecktes Espruino; eine fehlende Methode wie `Array.shift` hält das Skript erst beim Aufruf an. Der Bau lässt nur Methoden durch, die am Gerät nachgewiesen sind (Liste in `tools/build.js`). |
 | `node tools/stapel.js [--alle]`, `node emu/stapel-test.js` | Stapelspeicher: Der Shelly hat nur Platz für etwa 15 einfache Aufrufe ineinander, Schleifen und Blöcke kosten mehr. Läuft er über, endet das Skript, mitunter startet der ganze Shelly neu und schaltet den Autostart des Skripts ab. `stapel.js` rechnet für jeden Einstieg (Takt, Rückrufe, Start) den teuersten Weg nach den Kosten, die am Gerät gemessen sind, und verlangt höchstens 70 %; `npm run build` bricht sonst ab. `stapel-test.js` prüft das Modell an den 33 Messungen. |
 | `node emu/scenarios.js [skript]` | 62 Szenarien im Emulator, für Quelltext und Gerätefassung. Der Emulator bildet Relais, Leistung, Firmware-Schutz, Uhr mit Zeitserver, Stromausfall, Speicher, Bedienfeld, Wetterdienst, Ortssuche, Diagnose-Seite und Gerätetemperatur nach und wacht über die Grenzen der Firmware. Die Datumsprüfung der TLS-Zertifikate bildet er nicht nach. |
-| `node emu/zufall.js [skript] [läufe] [tage]` | Zufallstest: wochenlang Stromausfälle, Internet- und Zeitserverausfälle, kaputte Wetterantworten, Pumpenstörungen beim Anlauf und mitten im Lauf, Tastendrücke und Neustarts; prüft Regeln, die immer gelten müssen, etwa Handgabe höchstens 90 min und höchstens 12 LED-Wechsel in 24 h |
+| `node emu/zufall.js [skript] [läufe] [tage]` | Zufallstest: wochenlang Stromausfälle, Internet- und Zeitserverausfälle, kaputte Wetterantworten, Pumpenstörungen beim Anlauf und mitten im Lauf, Tastendrücke und Neustarts; prüft Regeln, die immer gelten müssen, etwa jeder Lauf höchstens 120 min und höchstens 12 LED-Wechsel in 24 h |
 | `sh tools/espruino-run.sh build/bewaesserung.min.js [espruino]` | ein Tag im echten Espruino-Interpreter, auf dem die Shelly-Skriptsprache beruht ([Espruino](https://github.com/espruino/Espruino) für Linux bauen, Pfad als zweites Argument) |
 | `node emu/deploy-test.js`, `emu/browser-deploy-test.js` | Aufspielwerkzeug gegen einen nachgebauten Shelly mit Firmware-Update, https, Passwort und Wächter, per Node und im Browser (braucht Playwright: `npm install --no-save playwright && npx playwright install chromium`) |
 | `node emu/jahreslauf.js src/bewaesserung.js <jahr> <mit\|ohne\|offline> <datei>` | eine ganze Saison mit echtem Wetter (DWD Mannheim 2022–2026) |
@@ -150,7 +152,7 @@ Die Saisons 2022 bis 2026 wurden mit dem Wetter der DWD-Station Mannheim gerechn
 | --- | ---: | ---: | ---: |
 | Skript, Regenprognose trifft | 2.318 mm | 2 | 0 mm |
 | Skript, ohne Regenprognose | 2.440 mm | 0 | 0 mm |
-| Skript ganz ohne Internet | 3.593 mm | 12 | 1.044 mm |
+| Skript ganz ohne Internet | 3.928 mm | 1 | 1.344 mm |
 | idealer Bodensensor | 2.397 mm | 0 | 0 mm |
 | Zeitschaltuhr, April–September Mo/Do 12,5 mm | 3.262 mm | 245 | 1.135 mm |
 | Zeitschaltuhr mit Regensensor | 2.262 mm | 320 | 377 mm |
@@ -161,7 +163,7 @@ Das Skript gießt 97 % der Menge eines idealen Bodensensors; seine zwei Stressta
 ## Grenzen
 
 - **Was noch am echten Gerät zu prüfen ist:** wie viel Leistung die Pumpe bei zugedrehtem Hahn zieht. Arbeitsspeicher, Diagnose-Seite, Neustart, Autostart und Wächter sind am Gerät geprüft (Outdoor Plug S Gen3, Firmware 2.0.3). Anmelden und Setzen des Gerätepassworts folgen der Shelly-Doku, gelaufen sind sie bisher nur gegen den Nachbau.
-- **Der Arbeitsspeicher ist knapp:** Von 25 186 Byte belegt das Skript rund 15 400. Mit voller Meldungsliste, offener Störung und der größten Wetterantwort (15 Tage) bleiben 1,9 KB frei. Reicht er einmal nicht, hält das Skript an, und der Wächter startet es binnen 5 min neu.
+- **Der Arbeitsspeicher ist knapp:** Von 25 186 Byte belegt das Skript rund 15 500. Mit voller Meldungsliste, offener Störung und der größten Wetterantwort (15 Tage) bleiben 1,9 KB frei. Reicht er einmal nicht, hält das Skript an, und der Wächter startet es binnen 5 min neu.
 - **Steht das Skript dauerhaft,** etwa weil ein Firmware-Update es nicht mehr starten lässt, bleibt die LED auf ihrer letzten Farbe. Die Pumpe schützt dann nur noch die Firmware: Einschaltzustand aus, Notabschaltung nach 160 min. Ob das Skript läuft, zeigt die Weboberfläche unter *Scripts*.
 - **Die Nachprüfung um 11:05 und 12:05 sieht im Sommer meist dieselbe Prognose wie um 10:00.** Das Wettermodell ICON-D2 des DWD rechnet alle 3 h; der Lauf von 11:00 Sommerzeit ist erst gegen 12:35 abrufbar. Die Nachprüfung hilft bei Frost, bei verspäteten Läufen und im Winterhalbjahr.
 - **Die Uhrzeit kommt nur vom Zeitserver.** Ist er gesperrt (UDP 123), bleibt die Uhr geschätzt wie ohne Internet und gießt nie zu früh. Einen zweiten Weg gibt es mit Absicht nicht: Firmware ab 2.0 prüft das Datum von TLS-Zertifikaten, ohne richtige Uhr klappt also auch kein HTTPS.

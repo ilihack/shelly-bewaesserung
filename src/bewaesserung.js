@@ -46,13 +46,13 @@ var C = {
   DOSE_MAX_MM: 15,               // größte Gabe je Lauf
   D_MAX_MM: 25,                  // Bodenkonto ist nach oben begrenzt (Wurzelraum)
   HAND_MIN_MM: 6,                // Handgabe mindestens
-  HAND_MAX_MIN: 90,              // Handgabe höchstens 90 min: zweite Grenze, falls ein zugedrehter Hahn unerkannt bleibt
   RAIN_PROB_MIN: 60,             // Regenprognose zählt ab 60 % Wahrscheinlichkeit
   RAIN_LOSS_MM: 1,               // so viel Regen je Tag erreicht den Boden nicht
   FROST_C: 5,                    // Tiefstwert der Prognose darunter: Frostnacht (am Boden ist es in klaren Nächten kälter)
   FROST_OFF_C: 5,                // ohne Internet: geschätzter Tiefstwert darunter (Gerätefühler minus Eigenwärme)
   FROST_THAW_C: 5,               // nach einer Frostnacht erst gießen, wenn die Luft so warm ist (stündlich geprüft)
-  OFF_ET: 1.1,                   // ohne Internet lieber mehr: trockene Tage liegen 5 % zu tief, +5 % Reserve [2]
+  OFF_ET: 1.21,                  // ohne Internet lieber mehr: trockene Tage liegen 5 % zu tief, +5 % Reserve, darauf
+                                 // nochmals +10 %: zu viel Wasser schadet nicht, zu wenig schon [2]
 
   // Pumpe: an die eigene Pumpe anpassen. I = Nennstrom laut Typenschild (A); gerechnet wird mit dem Strom, weil die
   // Watt-Angabe im Katalog oft die Leistung an der Welle ist. Tauchpumpe: P_LEARN_MIN 115·I, P_LEARN_MAX 240·I,
@@ -63,7 +63,8 @@ var C = {
   P_ABS_DRY: 600,                // vor dem Einlernen: darunter Trockenlauf (W)
   P_ABS_OVER: 2100,              // vor dem Einlernen: darüber Überlast (W)
   I_MAX: 10.5,                   // Strom darüber = blockiert (A); Stecker selbst: 12 A
-  MAX_RUN_MIN: 150,              // längster Lauf, den das Skript plant
+  MAX_RUN_MIN: 120,              // längster Lauf, Hand wie Automatik; zweite Grenze, falls ein zugedrehter Hahn
+                                 // unerkannt bleibt. Den Timer hält die Firmware, er wirkt auch ohne Skript
   AUTO_OFF_S: 9600,              // Notabschaltung des Relais (160 min), wirkt auch ohne Skript
   MAX_STARTS_H: 10,              // Starts je Stunde: die Hälfte des Datenblattwerts (diese Pumpe verträgt 20)
 
@@ -544,7 +545,7 @@ function startRun(kind, mm) {
   var sec = secsFor(mm);
   if (sec < 60) return "kurz";
   Shelly.call("Switch.Set", { id: 0, on: true, toggle_after: sec }, cbSafe, onSetResult);   // wirft er, bleibt R.ps leer
-  R.ps = { k: kind, mm: mm, sec: sec, until: now + 15 };
+  R.ps = { k: kind, mm: sec * rate() / 3600, sec: sec, until: now + 15 };   // Ziel nach der Laufzeitgrenze
   return null;
 }
 function note(t) { R.note = t; R.noteU = Shelly.getUptimeMs() / 1000; log(t); }
@@ -561,17 +562,17 @@ function runBegin(st, gone) {            // gone: eigener Start, der nie als Lau
       return;
     }
     if (R.boot && st.timer_duration) {    // Skript neu gestartet während eines Laufs: Firmware-Timer läuft, übernehmen.
-      // Länger als jeder eigene Timer (Notabschaltung, Timer der App): ohne Skript gestartet, also wie jede Handgabe
-      // höchstens HAND_MAX_MIN ab Beginn, Timer kürzen
+      // Länger als jeder eigene Timer (Notabschaltung, Timer der App): ohne Skript gestartet, also wie jeder Lauf
+      // höchstens MAX_RUN_MIN ab Beginn, Timer kürzen
       el = (u && st.timer_started_at) ? lim(u - st.timer_started_at, 0, st.timer_duration) : 0;
       left = st.timer_duration - el;
-      sec = st.timer_duration > C.MAX_RUN_MIN * 60 ? Math.min(left, C.HAND_MAX_MIN * 60 - el) : left;
+      sec = st.timer_duration > C.MAX_RUN_MIN * 60 ? Math.min(left, C.MAX_RUN_MIN * 60 - el) : left;
       sec = r0(lim(sec, 1, st.timer_duration));
       if (sec < left - 5) Shelly.call("Switch.Set", { id: 0, on: true, toggle_after: sec }, cbNone);
       mm = sec * rate() / 3600;
     } else {
       mm = lim(u ? prov(loc(u)) : C.HAND_MIN_MM, C.HAND_MIN_MM, C.DOSE_MAX_MM);
-      sec = Math.min(secsFor(mm), C.HAND_MAX_MIN * 60); mm = sec * rate() / 3600;   // höchstens 90 min, auch ohne Skript:
+      sec = secsFor(mm); mm = sec * rate() / 3600;   // höchstens MAX_RUN_MIN, auch ohne Skript:
       Shelly.call("Switch.Set", { id: 0, on: true, toggle_after: sec }, cbNone);     // der Firmware-Timer schaltet ab
     }
     R.want = null;                        // Handgabe ersetzt einen aufgeschobenen Automatiklauf
