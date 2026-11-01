@@ -20,6 +20,7 @@
  * Stapel: Der Shelly hat Platz für nur etwa 15 Aufrufe ineinander; Schleifen, Blöcke und Klammern kosten mit, ein
  * Überlauf beendet das Skript oder startet den Shelly neu. Darum flach: Zwischenwerte in eigene Anweisungen, Helfer
  * rufen kaum weiter, kein Selbstaufruf. tools/stapel.js prüft das beim Bauen.
+ * Methoden: Das Espruino des Shelly ist abgespeckt (kein Array.shift). Der Bau lässt nur am Gerät nachgewiesene durch.
  */
 
 // ============================== Einstellungen ==============================
@@ -109,7 +110,9 @@ var LED = { ok: [0, 100, 0], warn: [100, 70, 0], err: [100, 0, 100], run: [0, 0,
 var S = null;
 var R = {
   k: 0,              // Takt-Zähler
-  u: 0, sw: {},      // Uhrzeit (0 = unbekannt) und Relaisstatus dieses Takts: tiefe Aufrufe lesen sie hier
+  u: 0,              // Uhrzeit dieses Takts (0 = unbekannt), für log()
+  sw: { output: false, apower: 0, tC: null },   // Relais dieses Takts (nur das Nötige, Arbeitsspeicher): tiefe Aufrufe
+                                                 // lesen hier statt selbst die Firmware zu fragen (Stapel)
   ra: 0, au: true,   // Regenrate aus dem Bedienfeld (0 = Startwert C.RATE_MM_H), Automatik an
   oq: "",            // Ortsname für die URL der Ortssuche
   eb: 0, eu: 0,      // Uhr-Schätzung: Basis-Unixzeit und Uptime dazu
@@ -142,7 +145,8 @@ var R = {
   rh: 0, nf: false,  // Minute der nächsten Nachprüfung nach Regen oder Frost (0 = gleich, auch nach Neustart); Prognose heute nicht zählen
   la: null, lo: null, gn: 0, gx: false, // Koordinaten; nächste Ortsabfrage (Uptime); Ortsname nicht gefunden
   st: "",            // Ergebnis des Selbsttests fürs Aufspielwerkzeug
-  lg: [], t0: 0, s0: 0, // Diagnose: letzte Meldungen; zuletzt gespeicherte Uhrzeit vor dem Start; Skriptstart (Uptime);
+  lg: [], li: 0, t0: 0, s0: 0, // Diagnose: letzte Meldungen als Ring und nächster Platz darin; zuletzt gespeicherte
+                     // Uhrzeit vor dem Start; Skriptstart (Uptime);
   nw: 0, nc: 0, nl: 0 // Flash-Schreibvorgänge seit dem Skriptstart: Speicher, Einstellungen, LED
 };
 
@@ -155,13 +159,17 @@ function f1(x) { var v = Math.round(x * 10) / 10; return String(v).replace(".", 
 function lim(x, a, b) { return x < a ? a : (x > b ? b : x); }
 function p2(n) { return (n < 10 ? "0" : "") + n; }
 function log(t) {                         // Konsole und die letzten 10 Meldungen für die Diagnose (nur RAM). Uhrzeit roh
-  var k;                                  // aus dem Takt (R.u), lesbar erst in info(): log() wird überall gerufen
-  t = String(t); print("[BW] " + t);
-  k = t.slice(0, 80);
-  R.lg.push([R.u, R.est, k]);
-  if (R.lg.length > 10) R.lg.shift();
+  var k = R.u > 1e9 ? Math.floor(R.u) : 0;   // aus dem Takt (R.u, 10 Ziffern), dann ~ für geschätzt, dann der Text;
+  t = String(t); print("[BW] " + t);      // lesbar erst in info(): log() wird überall gerufen und muss flach bleiben
+  k = (k ? String(k) : "0000000000") + (R.est ? "~" : " ") + t.slice(0, 80);
+  if (R.lg.length < 10) R.lg.push(k); else R.lg[R.li] = k;   // Ring statt shift(): shift() fehlt dem Shelly
+  R.li = (R.li + 1) % 10;
 }
 function sw() { return Shelly.getComponentStatus("switch", 0) || {}; }   // im Takt; sonst R.sw, der Stand dieses Takts
+function swKeep(st) {                     // das Nötige davon in R.sw, ohne neues Objekt
+  var c = st.temperature;
+  R.sw.output = !!st.output; R.sw.apower = st.apower || 0; R.sw.tC = c && typeof c.tC === "number" ? c.tC : null;
+}
 function cbNone(res, err, msg) { if (err) log("RPC-Fehler " + err + " " + msg); }
 // Ein Fehler in einem Rückruf beendet ein Shelly-Skript (der Wächter startet es erst nach bis zu 5 min neu). Darum
 // laufen die Rückrufe über cbSafe (Rückruf als userdata): Fehler werden gemeldet, die Wiederholung kommt vom Takt.
@@ -300,25 +308,27 @@ function cfgCall(m, p, f) {               // Bedienfeld und Zeitpläne schreiben
 }
 
 // ============================== Bedienfeld (Virtual Components) ==============================
-var VC = [
-  ["text", 200, "st", { name: "Status", default_value: "", persisted: false, max_len: 255,
-    meta: { ui: { view: "label" } } }],
-  ["number", 200, "bk", { name: "Wasserdefizit", default_value: 0, persisted: false, min: 0, max: 25,
-    meta: { ui: { view: "progressbar", unit: "mm", step: 0.1 } } }],
-  ["boolean", 200, "au", { name: "Automatik", default_value: true, persisted: true,
-    meta: { ui: { view: "toggle", titles: ["Aus", "An"] } } }],
-  ["number", 201, "pa", { name: "Pause", default_value: 0, persisted: false, min: 0, max: 14,
-    meta: { ui: { view: "field", unit: "Tage", step: 1 } } }],
-  ["number", 202, "ra", { name: "Regenrate", default_value: C.RATE_MM_H, persisted: true, min: 1, max: 40,
-    meta: { ui: { view: "field", unit: "mm/h", step: 0.1 } } }],
-  ["button", 200, "re", { name: "Pumpe neu einlernen", meta: { ui: { view: "button" } } }]
-];
+var VC = [["text", 200, "st"], ["number", 200, "bk"], ["boolean", 200, "au"], ["number", 201, "pa"],
+  ["number", 202, "ra"], ["button", 200, "re"]];   // Typ, Nummer, Kürzel; die Einstellungen erst beim Anlegen (vcConf)
+function vcConf(i) {                      // Einstellungen von VC[i] beim Anlegen; so belegen sie keinen Arbeitsspeicher
+  if (i === 0) return { name: "Status", default_value: "", persisted: false, max_len: 255, meta: { ui: { view: "label" } } };
+  if (i === 1) return { name: "Wasserdefizit", default_value: 0, persisted: false, min: 0, max: 25,
+    meta: { ui: { view: "progressbar", unit: "mm", step: 0.1 } } };
+  if (i === 2) return { name: "Automatik", default_value: true, persisted: true, meta: { ui: { view: "toggle", titles: ["Aus", "An"] } } };
+  if (i === 3) return { name: "Pause", default_value: 0, persisted: false, min: 0, max: 14,
+    meta: { ui: { view: "field", unit: "Tage", step: 1 } } };
+  if (i === 4) return { name: "Regenrate", default_value: C.RATE_MM_H, persisted: true, min: 1, max: 40,
+    meta: { ui: { view: "field", unit: "mm/h", step: 0.1 } } };
+  return { name: "Pumpe neu einlernen", meta: { ui: { view: "button" } } };
+}
 var vcI = 0;
 
 function vcNext() {                      // Schleife statt Selbstaufruf: der Stapel des Shelly ist klein
+  var c;
   while (vcI < VC.length && Shelly.getComponentConfig(VC[vcI][0], VC[vcI][1])) vcI++;
   if (vcI < VC.length) {
-    cfgCall("Virtual.Add", { type: VC[vcI][0], id: VC[vcI][1], config: VC[vcI][3] }, vcAdded);
+    c = vcConf(vcI);
+    cfgCall("Virtual.Add", { type: VC[vcI][0], id: VC[vcI][1], config: c }, vcAdded);
     return;
   }
   if (!Shelly.getComponentConfig("group", 200)) {
@@ -394,8 +404,10 @@ function estEt(day) {                     // ohne Internet: Monatsmittel, an hei
 // Für die Korrektur merkt es sich den Stand davor (xd), je Tag das vorher Gegossene (xw) und die Schätzung (xe).
 // Mit echten Daten rechnet es die Tage dann neu durch: Ein Regentag setzt das Konto auf 0, die Tage danach zählen.
 function xDrop() {                        // ältester geschätzter Tag fällt aus der Korrektur: Startwert nachziehen
+  var e = [], w = [], i;
   S.xd = lim(S.xd - S.xw[0], 0, C.D_MAX_MM) + S.xe[0];
-  S.xe.shift(); S.xw.shift(); S.xa++;
+  for (i = 1; i < S.xe.length; i++) { e.push(S.xe[i]); w.push(S.xw[i]); }   // neu aufbauen: shift() fehlt dem Shelly
+  S.xe = e; S.xw = w; S.xa++;
 }
 function bookEst(L) {                     // ohne Internet: offene Tage geschätzt verbuchen, für die Korrektur merken
   var d, b, e, w0 = S.pi;
@@ -407,8 +419,8 @@ function bookEst(L) {                     // ohne Internet: offene Tage geschät
     if (S.xa < 0) S.xa = d;
     e = r1(S.d - b); S.xe.push(e);        // xe: was nach der Grenze wirklich dazukam
     e = r1(w0); S.xw.push(e); w0 = 0;
-    if (S.xe.length > 14) xDrop();
   }
+  while (S.xe.length > 14) xDrop();       // nach der Schleife: dieselben Tage fallen raus, kostet weniger Stapel
   S.dp = L.day - 1;
 }
 
@@ -416,9 +428,9 @@ function bookEst(L) {                     // ohne Internet: offene Tage geschät
 function temp(L, now) {                   // alle 10 min, nur wenn das Relais seit 30 min aus ist (Eigenwärme) [2]
   var st, c, v, t;
   if (now - R.ts < 600) return;
-  R.ts = now; st = R.sw; c = st.temperature;
-  if (st.output || R.run || now - R.lastStop < 1800 || !c || typeof c.tC !== "number") return;
-  v = c.tC; t = R.td;
+  R.ts = now; st = R.sw;
+  if (st.output || R.run || now - R.lastStop < 1800 || st.tC === null) return;
+  v = st.tC; t = R.td;
   if (!t || t.d !== L.day) {
     R.ty = (t && t.d === L.day - 1) ? t : null;
     t = R.td = { d: L.day, n: 0, mn: v, mx: v };
@@ -438,17 +450,17 @@ function learnSelf(L, tn, tx) {           // Eigenwärme lernen: gestern, ganzer
   if (dx > -5 && dx < 50) S.oa = S.oa > -50 ? r1(S.oa + (dx - S.oa) * 0.3) : r1(dx);
 }
 function frostEst() {                     // ohne Internet: Tiefstwert der Nacht = Gerät minus Eigenwärme [2]
-  var t = R.td, c = R.sw.temperature, v = null;
+  var t = R.td, v = null;
   if (t && t.n) v = t.mn;
-  else if (c && typeof c.tC === "number") v = c.tC;
+  else if (R.sw.tC !== null) v = R.sw.tC;
   if (v === null) return null;
   return v - selfK(0) - (t && t.n >= 36 ? 0 : 5);   // weniger als 6 h Messwerte (Neustart): 5 K Reserve
 }
 function airNow() {                       // ohne Internet: Luft jetzt = Gerät minus Eigenwärme, nur bei ruhendem Relais;
-  var st = R.sw, c = st.temperature, now = Shelly.getUptimeMs() / 1000, a, b;   // für den Frost vorsichtig: die
-  if (S.oa < -50 || st.output || R.run || now - R.lastStop < 1800 || !c || typeof c.tC !== "number") return null;
-  a = selfK(0); b = selfK(1);             // größere Eigenwärme, ungelernt keine Angabe
-  return c.tC - Math.max(a, b);
+  var st = R.sw, now = Shelly.getUptimeMs() / 1000, a, b;   // für den Frost vorsichtig: die größere Eigenwärme,
+  if (S.oa < -50 || st.output || R.run || now - R.lastStop < 1800 || st.tC === null) return null;   // ungelernt keine
+  a = selfK(0); b = selfK(1);                                                    // Angabe
+  return st.tC - Math.max(a, b);
 }
 // Tiefpunkt-Erkennung mit 3 K Schwelle. Gilt nur, wenn vorher mindestens 6 K über mindestens 6 h abgekühlt
 // und danach binnen 3 h um 5 K erwärmt wurde: dann liegt er nahe am Sonnenaufgang (DWD Mannheim) [5]
@@ -958,7 +970,8 @@ function statusText(L) {                 // Texte vorab in eigenen Anweisungen: 
   if (S.fo && (!f || f.day === L.day)) {    // Störung heute; ältere stehen hinten, bis ein Lauf fehlerfrei war
     b = n ? hm(n.min) : "";
     t = "Störung" + (f ? " " + fm : "") + ": " + S.ft;
-    t += n ? ". Nachlauf " + b : (R.want ? ". Neuer Versuch bis " + he : ". Nächster Versuch morgen " + hs);
+    a = S.ev !== L.day && L.min < C.END_MIN ? "heute " : "morgen ";   // Störung vor der Tagesprüfung: heute
+    t += n ? ". Nachlauf " + b : (R.want ? ". Neuer Versuch bis " + he : ". Nächster Versuch " + a + hs);
   } else if (!inSeason(L)) t = "Winterpause bis 01." + p2(C.SEASON_FROM) + ". – Taster geht";
   else if (!autoOn()) t = "Automatik aus – Taster geht";
   else if (paused(L)) t = "Pause bis " + pz;
@@ -1039,7 +1052,7 @@ function dur(s) {
 }
 var LEDN = { ok: "grün", warn: "gelb", err: "violett" };
 function info() {                         // alle Aufrufe vorab, der Text danach (Stapel)
-  var u = nowU(), L = u ? loc(u) : null, c = checks(L), now = Shelly.getUptimeMs() / 1000, i, t, k = ledOf(c),
+  var u = nowU(), L = u ? loc(u) : null, c = checks(L), now = Shelly.getUptimeMs() / 1000, i, n, t, k = ledOf(c),
       st = statusText(L), cw = c.w.join(", "), w0 = u ? when(u) : "– Uhrzeit unbekannt", wf = S.fu > 1 ? when(S.fu) + " " : "",
       s0 = S.s0 > 0 ? dmy(S.s0) : "-", sm = f1(S.sm), bk = L ? prov(L) : S.d, ob = S.ob > -50 ? f1(S.ob) : "-",
       oa = S.oa > -50 ? f1(S.oa) : "-", wo = R.off && R.oa ? when(R.oa) : "", io = S.io ? when(S.io) : "",
@@ -1063,13 +1076,13 @@ function info() {                         // alle Aufrufe vorab, der Text danach
     (R.t0 > C.T_MIN ? ", davor zuletzt gespeichert " + t0 : "") + "; Skript läuft seit " + ds +
     "\nFlash-Schreibvorgänge seit Skriptstart: Speicher " + R.nw + ", Einstellungen " + R.nc + ", LED " + R.nl +
     "\n\nLetzte Meldungen:";
-  i = R.lg.length - 1;
-  while (i >= 0) { t += lgLine(R.lg[i]); i--; }   // while statt for: kostet weniger Stapel
+  n = R.lg.length; i = 1;                 // neueste zuerst; while statt for: kostet weniger Stapel
+  while (i <= n) { t += lgLine(R.lg[(R.li - i + n) % n]); i++; }
   return t;
 }
-function lgLine(g) {                      // Meldung [Unixzeit, Uhr geschätzt, Text] -> Zeile; ~ = Uhr war geschätzt
-  var L = g[0] ? loc(g[0]) : null, d = L ? dmy(L.day) : "", h = L ? hm(L.min) : "";
-  return "\n" + (L ? d + (g[1] ? " ~" : " ") + h : "--.-- --:--") + " " + g[2];
+function lgLine(g) {                      // Meldung aus log() -> Zeile; ~ = Uhr war geschätzt
+  var u = Number(g.slice(0, 10)), L = u ? loc(u) : null, d = L ? dmy(L.day) : "", h = L ? hm(L.min) : "";
+  return "\n" + (L ? d + (g.charAt(10) === "~" ? " ~" : " ") + h : "--.-- --:--") + " " + g.slice(11);
 }
 function onInfo(req, res) {               // ein Fehler hier darf das Skript nicht beenden
   try { res.body = info(); res.code = 200; } catch (e) { res.body = "Fehler: " + e; res.code = 500; }
@@ -1080,7 +1093,7 @@ function tick() {
   var st;
   R.k++;
   try {
-    st = R.sw = sw(); R.u = nowU() || 0;  // Stand dieses Takts für alle tieferen Aufrufe
+    st = sw(); swKeep(st); R.u = nowU() || 0;   // Stand dieses Takts für alle tieferen Aufrufe
     if (st.output && !R.run) runBegin(st);
     else if (!st.output && R.run) runEnd(st);
     else if (st.output && R.run) monitor(st);
@@ -1145,7 +1158,7 @@ function onSchedSet(res, err, msg) {
 }
 function init() {
   load();
-  R.sw = sw(); R.u = nowU() || 0; R.oq = uenc(C.ORT);
+  swKeep(sw()); R.u = nowU() || 0; R.oq = uenc(C.ORT);
   if (typeof C.LAT === "number" && typeof C.LON === "number") { R.la = C.LAT; R.lo = C.LON; }   // Ort eingetragen
   else if (S.la !== null) { R.la = S.la; R.lo = S.lo; }                                        // Ort gespeichert
   R.t0 = S.t; R.s0 = upS();               // für die Diagnose

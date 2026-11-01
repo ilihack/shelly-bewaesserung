@@ -1,10 +1,10 @@
-  Aufspielen gestartet, 30179 Byte
+  Aufspielen gestartet, 31370 Byte
   [Konsole] Gerät: S3PL-20112EU (OutdoorPlugSG3), Firmware 1.7.1, Gen 3
   [Konsole] Firmware 1.7.1 -> 2.1.0 (neueste stabile) wird installiert
   [Konsole] Firmware jetzt 2.1.0
   [Konsole] Matter abgeschaltet
   [Konsole] Skriptplatz angelegt: 1
-  [Konsole] Code hochgeladen: 30179 Byte in 30 Stücken
+  [Konsole] Code hochgeladen: 31370 Byte in 31 Stücken
   [Konsole] Autostart an
   [Konsole] Selbsttest im Skript (Ort, Wetter 15 Tage): ok, Ort 49.48 8.45
   [Konsole] Skript läuft: true, Speicher 12000 (Spitze 14000, frei 60000, Reserve in der Spitze 58000)
@@ -13,7 +13,7 @@
   [Konsole] Status: Heute nicht geprüft, nächste Prüfung morgen 10:00
   [Konsole] Uhr: 2026-10-19T13:00:55.000Z
   [Konsole] Wetterdienst vom Gerät: ok 2026-10-19: ET0 4 mm gestern
-  [Konsole] Diagnose-Seite: http://127.0.0.1:43435/script/1/info
+  [Konsole] Diagnose-Seite: http://127.0.0.1:33241/script/1/info
   [Konsole]     | Bewässerung 19.10.2026 15:00
     | 
     | Status: Heute nicht geprüft, nächste Prüfung morgen 10:00

@@ -223,6 +223,15 @@ scenarios.S09_keine_last = function () {
   check('S09 Pumpe zieht keinen Strom: Abschaltung <= 10 s', r && r.off && (r.off - r.on) <= 10e3, r ? ((r.off - r.on) / 1000).toFixed(1) + ' s' : '');
   check('S09 Status nennt Ursache', /keinen Strom/.test(w.vcText()), w.vcText());
   common(w, 'S09');
+  // b) Taster nachts ohne Last (so am echten Gerät geschehen): die nächste Prüfung ist heute 10:00, nach ihr morgen
+  const w2 = learnedWorld(T(2027, 6, 2, 0, 30));
+  w2.pump.mode = 'noload';
+  w2.run(T(2027, 6, 2, 1, 29)); w2.press(); w2.runFor(M);
+  const nachts = w2.vcText();
+  w2.run(T(2027, 6, 2, 10, 30));
+  check('S09b Taster nachts ohne Last: Störung, nächste Prüfung heute 10:00, nach der Prüfung morgen',
+    /keinen Strom \(0 W\)\. Nächster Versuch heute 10:00/.test(nachts) && /Nächster Versuch morgen 10:00/.test(w2.vcText()), nachts + ' / ' + w2.vcText());
+  common(w2, 'S09b');
 };
 
 // ------------------------------------------------------------------
@@ -1277,6 +1286,13 @@ scenarios.S54_diagnose = function () {
   check('S54c Internetausfall ab dem ersten gescheiterten Versuch: währenddessen „fehlt seit“, danach Beginn und Dauer',
     /\nInternet: Wetterdienst fehlt seit 02\.06\.2027 10:0\d\n/.test(off) && /\nInternet: ok, letzter Ausfall 02\.06\.2027 10:0\d, 2 h\n/.test(p.body),
     off.split('\n')[9] + ' / ' + p.body.split('\n')[9]);
+  // f) die letzten 10 Meldungen als Ring (der Shelly kennt kein Array.shift): nach dem Überlauf genau 10, neueste zuerst
+  const logFn = (fs.readFileSync(FILE, 'utf8').match(/function ([\w$]+)\(\w+\)\{\s*var \w+ ?= ?[\w.]+ ?> ?1e9[^]{0,120}print\("\[BW\] "/) || [])[1] || 'log';
+  for (let i = 1; i <= 23; i++) w.eval(logFn + '("Ringtest ' + i + '")');
+  const zeilen = w.endpoint('info').body.split('Letzte Meldungen:\n')[1].split('\n').map(z => z.replace(/^(\d\d\.\d\d\. ~?\d\d:\d\d|--\.-- --:--) /, ''));
+  const neueste = w.logs.map(l => l.msg).filter(m => /^\[BW\] /.test(m)).map(m => m.slice(5)).slice(-10).reverse();
+  check('S54f letzte Meldungen: nach 23 weiteren genau 10, neueste zuerst', zeilen.length === 10 &&
+    zeilen.every((z, i) => z.slice(0, 30) === neueste[i].slice(0, 30)) && zeilen[0] === 'Ringtest 23' && zeilen[9] === 'Ringtest 14', zeilen.join(' | '));
   // d) Aufrufe ändern nichts: 100 Aufrufe, kein Schreibvorgang, Zustand gleich
   const s0 = JSON.stringify(w.state()), n0 = w.storageWrites.length + w.cfgCallT.length + w.ledWrites.length;
   for (let i = 0; i < 100; i++) w.endpoint('info');

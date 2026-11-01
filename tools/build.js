@@ -80,6 +80,24 @@ function cKeys(src) {
   const tief = st.ergebnis[0];
   for (const e of st.ergebnis) if (e.anteil > stapel.ANTEIL) errs.push('Stapel ' + Math.round(e.anteil * 100) + ' % ' + e.einstieg + ': ' + e.weg.join(' > '));
   for (const f of st.fehler) errs.push('Stapel: ' + f);
+  // Eingebaute Methoden nur, wenn am Gerät nachgewiesen: Der Shelly hat ein abgespecktes Espruino. Was fehlt, fällt
+  // erst beim Aufruf auf und hält das Skript an (so geschehen mit Array.shift: "Function "shift" not found!").
+  // Am Gerät geprüft (Firmware 2.0.3): alle hier eingetragenen da; shift und unshift fehlen. Neue Methode: erst am Gerät
+  // per Script.Eval mit typeof prüfen, dann hier eintragen.
+  const AM_GERAET = new Set(['floor', 'round', 'abs', 'min', 'max', 'cos', 'sin', 'tan', 'acos',   // Math
+    'parse', 'stringify', 'push', 'join', 'charAt', 'charCodeAt', 'slice', 'lastIndexOf', 'replace', 'toLowerCase',
+    'call', 'getUptimeMs', 'getComponentStatus', 'getComponentConfig', 'getDeviceInfo',              // Shelly
+    'getItem', 'setItem', 'set', 'getHandle', 'getValue', 'setValue', 'getStatus', 'on', 'off', 'registerEndpoint', 'send']);
+  (function walk(node) {
+    if (!node || typeof node.type !== 'string') return;
+    const c = node.callee;
+    if (node.type === 'CallExpression' && c.type === 'MemberExpression' && !c.computed && !AM_GERAET.has(c.property.name))
+      errs.push('Methode ' + c.property.name + '() am Gerät nicht nachgewiesen (Zeile ' + node.loc.start.line + ')');
+    for (const k of Object.keys(node)) {
+      const v = node[k];
+      if (Array.isArray(v)) v.forEach(walk); else if (v && typeof v.type === 'string') walk(v);
+    }
+  })(acorn.parse(src, { ecmaVersion: 5, locations: true }));
   fs.mkdirSync(path.dirname(OUT), { recursive: true });
   fs.writeFileSync(OUT, code);
   console.log(JSON.stringify({ quelle: src.length, geraet: code.length, funktionsTiefe: maxDepth,

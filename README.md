@@ -82,7 +82,7 @@ I ist der Nennstrom laut Typenschild. Die Formeln rechnen mit dem Strom, weil di
 
 ```sh
 npm install
-npm run build                    # build/bewaesserung.min.js (gekürzt, nur ASCII, Sprachmittel und Stapel geprüft) und build/deploy-browser.js
+npm run build                    # build/bewaesserung.min.js (gekürzt, nur ASCII, Sprachmittel, Stapel und Methoden geprüft) und build/deploy-browser.js
 node tools/deploy.js <IP-des-Shelly> [--passwort <Gerätepasswort>] [--neues-passwort <neues Passwort>]
 ```
 
@@ -132,6 +132,7 @@ Bedient wird das Skript nur über das Gerät und die Shelly-App. Seine einzige e
 
 | Befehl | prüft |
 | --- | --- |
+| `npm run build` | Gerätefassung: nur ASCII, nur ES5, Stapel (nächste Zeile) und eingebaute Methoden. Der Shelly hat ein abgespecktes Espruino; eine fehlende Methode wie `Array.shift` hält das Skript erst beim Aufruf an. Der Bau lässt nur Methoden durch, die am Gerät nachgewiesen sind (Liste in `tools/build.js`). |
 | `node tools/stapel.js [--alle]`, `node emu/stapel-test.js` | Stapelspeicher: Der Shelly hat nur Platz für etwa 15 einfache Aufrufe ineinander, Schleifen und Blöcke kosten mehr. Läuft er über, endet das Skript, mitunter startet der ganze Shelly neu und schaltet den Autostart des Skripts ab. `stapel.js` rechnet für jeden Einstieg (Takt, Rückrufe, Start) den teuersten Weg nach den Kosten, die am Gerät gemessen sind, und verlangt höchstens 70 %; `npm run build` bricht sonst ab. `stapel-test.js` prüft das Modell an den 33 Messungen. |
 | `node emu/scenarios.js [skript]` | 62 Szenarien im Emulator, für Quelltext und Gerätefassung. Der Emulator bildet Relais, Leistung, Firmware-Schutz, Uhr mit Zeitserver, Stromausfall, Speicher, Bedienfeld, Wetterdienst, Ortssuche, Diagnose-Seite und Gerätetemperatur nach und wacht über die Grenzen der Firmware. Die Datumsprüfung der TLS-Zertifikate bildet er nicht nach. |
 | `node emu/zufall.js [skript] [läufe] [tage]` | Zufallstest: wochenlang Stromausfälle, Internet- und Zeitserverausfälle, kaputte Wetterantworten, Pumpenstörungen beim Anlauf und mitten im Lauf, Tastendrücke und Neustarts; prüft Regeln, die immer gelten müssen, etwa Handgabe höchstens 90 min und höchstens 12 LED-Wechsel in 24 h |
@@ -159,7 +160,8 @@ Das Skript gießt 97 % der Menge eines idealen Bodensensors; seine zwei Stressta
 
 ## Grenzen
 
-- **Was noch am echten Gerät zu prüfen ist:** wie viel Leistung die Pumpe bei zugedrehtem Hahn zieht und wie viel Arbeitsspeicher das Skript braucht (Gerätefassung 30,2 KB); das Aufspielwerkzeug misst den Speicher, auch beim Aufbau der Diagnose-Seite. Anmelden, Setzen des Gerätepassworts und die Diagnose-Seite folgen der Shelly-Doku, gelaufen sind sie bisher nur gegen den Nachbau und im Espruino.
+- **Was noch am echten Gerät zu prüfen ist:** wie viel Leistung die Pumpe bei zugedrehtem Hahn zieht. Arbeitsspeicher, Diagnose-Seite, Neustart, Autostart und Wächter sind am Gerät geprüft (Outdoor Plug S Gen3, Firmware 2.0.3). Anmelden und Setzen des Gerätepassworts folgen der Shelly-Doku, gelaufen sind sie bisher nur gegen den Nachbau.
+- **Der Arbeitsspeicher ist knapp:** Von 25 186 Byte belegt das Skript rund 15 400. Mit voller Meldungsliste, offener Störung und der größten Wetterantwort (15 Tage) bleiben 1,9 KB frei. Reicht er einmal nicht, hält das Skript an, und der Wächter startet es binnen 5 min neu.
 - **Steht das Skript dauerhaft,** etwa weil ein Firmware-Update es nicht mehr starten lässt, bleibt die LED auf ihrer letzten Farbe. Die Pumpe schützt dann nur noch die Firmware: Einschaltzustand aus, Notabschaltung nach 160 min. Ob das Skript läuft, zeigt die Weboberfläche unter *Scripts*.
 - **Die Nachprüfung um 11:05 und 12:05 sieht im Sommer meist dieselbe Prognose wie um 10:00.** Das Wettermodell ICON-D2 des DWD rechnet alle 3 h; der Lauf von 11:00 Sommerzeit ist erst gegen 12:35 abrufbar. Die Nachprüfung hilft bei Frost, bei verspäteten Läufen und im Winterhalbjahr.
 - **Die Uhrzeit kommt nur vom Zeitserver.** Ist er gesperrt (UDP 123), bleibt die Uhr geschätzt wie ohne Internet und gießt nie zu früh. Einen zweiten Weg gibt es mit Absicht nicht: Firmware ab 2.0 prüft das Datum von TLS-Zertifikaten, ohne richtige Uhr klappt also auch kein HTTPS.
