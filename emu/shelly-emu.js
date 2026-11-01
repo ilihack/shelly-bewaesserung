@@ -70,7 +70,8 @@ class World {
       controls: { 'switch:0': { in_mode: 'momentary' } } };
     this.ledWrites = [];
     this.jobs = [];                     // Gerätezeitpläne (Schedule)
-    this.pump = { mode: 'normal', Pn: 1320, noise: 25, onSince: 0, weld: false, fillS: 20 };
+    // closedRel: Leistung bei zugedrehtem Hahn; die Leitung füllt sich nur, wenn die Pumpe länger als 60 s stand
+    this.pump = { mode: 'normal', Pn: 1320, noise: 25, onSince: 0, offAt: 0, fill: true, weld: false, fillS: 20, closedRel: 0.62 };
     this.weather = opts.weather || (() => ({ et0: 4.0, rain: 0, prob: 5, tmin: 14 }));
     this.forecast = null;               // optional: (dateStr) => {rain, prob, tmin} für "heute"
     // Lufttemperatur: ohne Vorgabe Tagesgang aus tmin (kurz nach Sonnenaufgang) und tmax (15:00) des Wetters
@@ -88,6 +89,7 @@ class World {
     this.verbose = !!opts.verbose;
     this.noHttpServer = !!opts.noHttpServer;
     this.limits = { timers: 0, rpc: 0, handlers: 0 };
+    this.maxStore = {};                 // längster geschriebener Wert je Schlüssel (wie Espruino ihn schreibt)
     this.boot(0);
   }
 
@@ -120,7 +122,7 @@ class World {
       w.bootCount++;
       const dev = { bootAt: w.t, timers: {}, nTimers: 0, rpcOpen: 0, handlers: 0, output: false,
         timer: null, src: 'init', errors: [], clockBase: null, clockUp: 0, ntpSynced: false, syncTs: null,
-        vcHandles: {}, endpoints: {}, ctx: null, scriptRunning: false };
+        vcHandles: {}, endpoints: {}, ctx: null, scriptRunning: false, stHandlers: {}, stSeq: 0 };
       w.dev = dev;
       // Anfangszustand Relais
       let on = false;
@@ -182,15 +184,25 @@ class World {
         dev.timer = tm;
         this.after(sec * 1000, () => { if (!tm.cancelled && dev.output) this.setOutput(false, 'timer', null); }, dev);
       }
-      if (!was) { this.pump.onSince = this.t; dev.errors = []; }
+      if (!was) {
+        this.pump.fill = !(this.pump.offAt && this.t - this.pump.offAt < 60000);
+        this.pump.onSince = this.t; dev.errors = [];
+      }
       if (!was && this.pump.mode === 'anlauf') {   // Überstromschutz löst schon beim Anlauf aus, binnen 0,4 s
         this.after(400, () => { if (dev.output) { this.setOutput(false, 'overcurrent', null); dev.errors = ['overcurrent']; } }, dev);
       }
-    } else if (was && this.swCfg.auto_on) {          // Firmware "auto_on": nach jedem Aus wieder ein
+    } else if (was) this.pump.offAt = this.t;
+    if (!on && was && this.swCfg.auto_on) {          // Firmware "auto_on": nach jedem Aus wieder ein
       this.after(this.swCfg.auto_on_delay * 1000, () => { if (this.dev === dev && !dev.output && this.swCfg.auto_on) this.setOutput(true, 'auto_on', null); }, dev);
     }
     if (was !== on) this.relay.push({ t: this.t, on, src });
     this.lastOutput = on;
+    // Status-Abos (Shelly.addStatusHandler): kommen kurz danach, bei jedem Schalten (auch ohne Wechsel), dazu später
+    // ein Leistungswert ohne output, wie die Firmware ihn meldet
+    const ev = { component: 'switch:0', name: 'switch', id: 0, delta: { id: 0, output: on, source: src } };
+    this.after(5, () => { for (const k of Object.keys(dev.stHandlers)) if (dev.stHandlers[k]) dev.stHandlers[k](ev); }, dev);
+    this.after(900, () => { const e = { component: 'switch:0', name: 'switch', id: 0, delta: { id: 0, apower: Math.round(this.measure().P) } };
+      for (const k of Object.keys(dev.stHandlers)) if (dev.stHandlers[k]) dev.stHandlers[k](e); }, dev);
   }
   press() { if (this.dev) this.setOutput(!this.dev.output, 'button', null); }
 
@@ -206,13 +218,13 @@ class World {
       case 'normal': P = p.Pn + nz(); break;
       case 'dry': P = p.Pn * 0.42 + nz(); break;
       case 'airmix': P = (this.rand() < 0.55 ? p.Pn * 0.45 : p.Pn * 0.9) + nz(); break;
-      case 'closed': P = p.Pn * 0.62 + nz(); break;
+      case 'closed': P = p.Pn * p.closedRel + nz(); break;
       case 'blocked': P = 3300; I = 26; break;
       case 'noload': P = 0; I = 0; break;
       case 'burst': P = p.Pn * 1.4 + nz(); break;
       default: P = p.Pn;
     }
-    if (p.mode !== 'blocked' && p.mode !== 'noload' && el < p.fillS) P = P * 1.18; // Leitung füllt sich
+    if ((p.mode === 'normal' || p.mode === 'airmix' || p.mode === 'burst') && p.fill && el < p.fillS) P = P * 1.18; // Leitung füllt sich
     if (el < 0.5 && p.mode !== 'noload') { I = 24; }                             // Anlaufstrom (kurz)
     if (I === undefined) I = P / (U * 0.92);
     return { P: Math.max(0, P), I, U };
@@ -268,7 +280,10 @@ class World {
         setItem(k, v) {
           if (typeof v !== 'string') throw new Error('storage: nur Strings');
           if (Buffer.byteLength(k) > 16) throw new Error('storage: Schlüssel > 16 Byte');
-          if (Buffer.byteLength(v) > 1024) throw new Error('storage: Wert > 1024 Byte (' + Buffer.byteLength(v) + ')');
+          // so lang schreibt es Espruino: jedes Byte ab 0x80 als \u00XX (geschätzt: je UTF-8-Byte 6 Zeichen)
+          const n = v.length + [...v].reduce((a, c) => a + (c.charCodeAt(0) > 127 ? 6 * Buffer.byteLength(c) - 1 : 0), 0);
+          w.maxStore[k] = Math.max(w.maxStore[k] || 0, n);
+          if (n > 1024) throw new Error('storage: Wert > 1024 Byte (' + n + ')');
           if (!(k in w.storage) && Object.keys(w.storage).length >= 12) throw new Error('storage: > 12 Einträge');
           w.storage[k] = v; w.storageWrites.push(w.t);
         },
@@ -400,7 +415,13 @@ class World {
         } catch (e) { err = -1; msg = String(e); }
         w.after(lat, () => { dev.rpcOpen--; if (post) post(); if (cb) guard(cb)(res, err, msg, ud); }, dev);
       },
-      emitEvent() {}
+      emitEvent() {},
+      addStatusHandler(cb, ud) {           // Handle beginnt bei 0 wie beim echten Gerät möglich
+        if (typeof cb !== 'function') throw new Error('addStatusHandler: Parameter');
+        dev.handlers++; w.limits.handlers = Math.max(w.limits.handlers, dev.handlers); if (dev.handlers > 5) throw new Error('Handler-Limit');
+        const id = dev.stSeq++, g = guard(cb); dev.stHandlers[id] = (ev) => g(ev, ud); return id;
+      },
+      removeStatusHandler(id) { if (dev.stHandlers[id]) { delete dev.stHandlers[id]; dev.handlers--; } }
     };
     vm.createContext(ctx);
     dev.ctx = ctx; dev.scriptRunning = true;
@@ -410,13 +431,14 @@ class World {
   restartScript() {                     // Skript neu starten (z. B. Update), Relais und Timer der Firmware bleiben
     const dev = this.dev;
     dev.scriptGen = (dev.scriptGen || 0) + 1;
-    dev.timers = {}; dev.nTimers = 0; dev.handlers = 0; dev.vcHandles = {}; dev.endpoints = {}; dev.rpcOpen = 0;
+    dev.timers = {}; dev.nTimers = 0; dev.handlers = 0; dev.vcHandles = {}; dev.endpoints = {}; dev.rpcOpen = 0; dev.stHandlers = {};
     this.after(1000, () => this.startScript(dev), dev);
   }
   stopScript() {                        // Skript bleibt stehen (Absturz o. ä.), Gerät läuft weiter
     const dev = this.dev;
     dev.scriptGen = (dev.scriptGen || 0) + 1;
     dev.timers = {}; dev.nTimers = 0; dev.handlers = 0; dev.vcHandles = {}; dev.endpoints = {}; dev.rpcOpen = 0; dev.scriptRunning = false;
+    dev.stHandlers = {};
     this.logEvt('SKRIPT STEHT');
   }
   fireSchedules() {                     // Gerätezeitplan ausführen (nur Script.Start wird nachgebildet)

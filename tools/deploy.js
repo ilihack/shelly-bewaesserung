@@ -9,7 +9,7 @@
  * Schritte: Gerät prüfen -> neueste stabile Firmware -> Matter aus -> Wächter anhalten -> Skript anlegen/ersetzen
  *           -> Autostart an -> starten, Bedienfeld anlegen lassen, Skript neu starten -> Selbsttest und Diagnose-Seite
  *           (Speicher unter Last) -> prüfen:
- *           Skript läuft fehlerfrei, Einschaltzustand aus, Notabschaltung 9600 s, kein Wiedereinschalten,
+ *           Skript läuft fehlerfrei, Einschaltzustand aus, Notabschaltung 7800 s, kein Wiedereinschalten,
  *           Bedienfeld vollständig, Statuszeile da, Wetterdienst erreichbar, Speicherreserve >= 2 KB, Diagnose-Seite,
  *           Sicherheit (Passwort, Access Point, Bluetooth), Firmware-Update-Zeitplan, Wächter startet ein angehaltenes
  *           Skript neu; auf Wunsch zuletzt das Gerätepasswort setzen (--neues-passwort).
@@ -263,7 +263,7 @@ async function deployShelly(base, code, log, opt) {
   }
 
   out.ok = st.running && !st.errors && cfg.initial_state === 'off' && cfg.auto_off === true &&
-    cfg.auto_off_delay === 9600 && cfg.auto_on !== true && fehlt.length === 0 && !!out.status && /^ok/.test(out.wetter) && reserve >= 2048 &&
+    cfg.auto_off_delay === 7800 && cfg.auto_on !== true && fehlt.length === 0 && !!out.status && /^ok/.test(out.wetter) && reserve >= 2048 &&
     /^ok/.test(selbst) && out.waechterPlan && out.waechter && out.firmwareNeu && out.updatePlan && out.passwortNeu;
   step(out.ok ? 'FERTIG – alles in Ordnung' : 'PRÜFEN – siehe oben');
   return out;

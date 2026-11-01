@@ -1,5 +1,6 @@
 // Minimal-Gerät für den echten Espruino-Interpreter (ES5). Wird vor das Skript gehängt.
-// Ablauf: 01.06.2027 09:00 MESZ, Konto 14 mm, Pumpe gelernt 1320 W.
+// Ablauf: 01.06.2027 09:00 MESZ, Konto 14 mm, Pumpe nach alter Fassung gelernt 1320 W (ln bleibt liegen).
+// Eingesteckt: ab 10 s 5× drücken = Anlernen; nach dem Signal Hahn zu, 3 min später wieder auf.
 // 10:00 Automatik 14 mm -> 10:20 Brunnen leer -> Schutz -> 11:10 Brunnen wieder voll -> 11:20 Nachlauf
 // 18:00 Taster -> Handgabe; 02.06. 10:00 Prüfung. Ausgabe: Zeilen mit "##".
 var __W = {
@@ -8,7 +9,7 @@ var __W = {
   storage: {}, writes: 0, vc: {}, cfgWrites: 0,
   cfg: { initial_state: 'restore_last', auto_off: false, auto_off_delay: 60, name: null, power_limit: 2500, current_limit: 12 },
   relay: [], errs: 0, rpcOpen: 0, rpcMax: 0, timers: 0, timersMax: 0, memMax: 0, timer: null,
-  jobs: [], led: null, ledWrites: 0
+  jobs: [], led: null, ledWrites: 0, st: {}, stN: 0, offUp: -1e9, fill: true
 };
 __W.storage.s = JSON.stringify({ v: 1, t: __W.base, d: 14, dp: 20969, pi: 0, ev: -1, pn: 1320, ln: 3, pu: 0, fd: -1, fc: 0, rt: 0, rm: 0, lr: '' });
 function __at(ms, fn) { __W.q.push({ at: ms, seq: __W.seq++, fn: fn }); }
@@ -23,16 +24,19 @@ function __setOut(on, src, ta) {
       __W.timer = { started: Math.floor(__unix()), dur: sec, type: ta ? 'toggle_after' : 'auto_off' };
       __at(__W.up + sec * 1000, function () { if (tok === __W.tmTok && __W.out) __setOut(false, 'timer', 0); });
     }
-    if (!was) __W.onUp = __W.up;
-  }
+    if (!was) { __W.onUp = __W.up; __W.fill = __W.up - __W.offUp >= 60000; }
+  } else if (was) __W.offUp = __W.up;
   if (was !== on) __W.relay.push((on ? 'AN ' : 'AUS ') + __hm() + ' ' + src);
+  var ev = { component: 'switch:0', name: 'switch', id: 0, delta: { id: 0, output: on, source: src } };
+  __at(__W.up + 5, function () { for (var k in __W.st) __safe(__W.st[k], ev); });   // Status-Abos
 }
 function __hm() { var t = __unix() + 7200, s = Math.floor(t % 86400); var h = Math.floor(s / 3600), m = Math.floor(s % 3600 / 60); return (h < 10 ? '0' : '') + h + ':' + (m < 10 ? '0' : '') + m + ' T' + Math.floor(t / 86400); }
 function __measure() {
   if (!__W.out) return { P: 0, I: 0 };
   var el = (__W.up - __W.onUp) / 1000, P = __W.Pn;
   if (__W.mode === 'dry') P = __W.Pn * 0.42;
-  if (el < 20 && __W.mode === 'normal') P = P * 1.18;
+  if (__W.mode === 'closed') P = __W.Pn * 0.62;
+  if (el < 20 && __W.mode === 'normal' && __W.fill) P = P * 1.18;
   return { P: P, I: P / (229 * 0.92) };
 }
 function __ymd(day) {        // Tagesnummer -> YYYY-MM-DD (eigene Rechnung, nur für den Wetterdienst)
@@ -77,6 +81,8 @@ var Virtual = { getHandle: function (key) {
 var HTTPServer = { registerEndpoint: function (n, cb) { __W.ep = cb; return 'script/1/' + n; } };
 var Shelly = {
   getUptimeMs: function () { return __W.up; },
+  addStatusHandler: function (cb) { var id = __W.stN++; __W.st[id] = cb; return id; },
+  removeStatusHandler: function (id) { delete __W.st[id]; print('## Status-Abo beendet ' + __hm()); },
   getDeviceInfo: function () { return { model: 'S3PL-20112EU', gen: 3, ver: '1.7.1', app: 'OutdoorPlugSG3' }; },
   getComponentStatus: function (t, id) {
     if (t === 'sys') return { unixtime: Math.floor(__unix()), uptime: Math.floor(__W.up / 1000) };
@@ -122,7 +128,10 @@ function __runUntilUp(endMs) {
   }
 }
 function __memSample() { var m = process.memory(); if (m.usage > __W.memMax) __W.memMax = m.usage; }
-// Welt-Ereignisse (Uptime in ms ab 06:00)
+// Welt-Ereignisse (Uptime in ms ab 09:00)
+for (var __p = 0; __p < 5; __p++) __at(10000 + __p * 1500, function () { __setOut(!__W.out, 'taster', 0); });
+__at(100e3, function () { __W.mode = 'closed'; print('## Hahn zu ' + __hm()); });   // Signal kommt ~75 s nach dem Einstecken
+__at(280e3, function () { __W.mode = 'normal'; print('## Hahn auf ' + __hm()); });
 __at(80 * 60e3, function () { __W.mode = 'dry'; print('## Brunnen leer ' + __hm()); });
 __at(130 * 60e3, function () { __W.mode = 'normal'; print('## Brunnen wieder voll ' + __hm()); });
 __at(9 * 3600e3, function () { print('## Taster ' + __hm()); __setOut(!__W.out, 'taster', 0); });

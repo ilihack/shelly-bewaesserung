@@ -1,19 +1,19 @@
-  Aufspielen gestartet, 31355 Byte
+  Aufspielen gestartet, 34959 Byte
   [Konsole] Gerät: S3PL-20112EU (OutdoorPlugSG3), Firmware 1.7.1, Gen 3
   [Konsole] Firmware 1.7.1 -> 2.1.0 (neueste stabile) wird installiert
   [Konsole] Firmware jetzt 2.1.0
   [Konsole] Matter abgeschaltet
   [Konsole] Skriptplatz angelegt: 1
-  [Konsole] Code hochgeladen: 31355 Byte in 31 Stücken
+  [Konsole] Code hochgeladen: 34959 Byte in 35 Stücken
   [Konsole] Autostart an
   [Konsole] Selbsttest im Skript (Ort, Wetter 15 Tage): ok, Ort 49.48 8.45
   [Konsole] Skript läuft: true, Speicher 12000 (Spitze 14000, frei 60000, Reserve in der Spitze 58000)
-  [Konsole] Relais: Einschaltzustand off, Notabschaltung true nach 9600 s, selbst wieder ein: nein
+  [Konsole] Relais: Einschaltzustand off, Notabschaltung true nach 7800 s, selbst wieder ein: nein
   [Konsole] Bedienfeld: text:200, number:200, boolean:200, number:201, number:202, button:200, group:200 – vollständig
   [Konsole] Status: Heute nicht geprüft, nächste Prüfung morgen 10:00
-  [Konsole] Uhr: 2026-10-19T13:00:55.000Z
+  [Konsole] Uhr: 2026-10-19T13:00:56.000Z
   [Konsole] Wetterdienst vom Gerät: ok 2026-10-19: ET0 4 mm gestern
-  [Konsole] Diagnose-Seite: http://127.0.0.1:34053/script/1/info
+  [Konsole] Diagnose-Seite: http://127.0.0.1:33481/script/1/info
   [Konsole]     | Bewässerung 19.10.2026 15:00
     | 
     | Status: Heute nicht geprüft, nächste Prüfung morgen 10:00
@@ -21,16 +21,19 @@
     | Letzte Störung: keine
     | Letzter Lauf: keiner
     | Saison seit -: Automatik 0, Hand 0, zusammen 0 mm, Störungen 0
-    | Bodenkonto 0 mm, Normalleistung nicht gelernt, Eigenwärme Fühler Nacht/Tag - / - K
+    | Pumpe: Voreinstellung, nicht angelernt; Untergrenze 600 W, Obergrenze 2100 W
+    | Bodenkonto 0 mm, Eigenwärme Fühler Nacht/Tag - / - K
     | Uhr: Zeitserver
     | Internet: ok
     | Ort: Ludwigshafen am Rhein 49.48, 8.45
     | Gerät: Firmware 1.7.1, an seit 19.10.2026 14:59 (1 min); Skript läuft seit 0 min
     | Flash-Schreibvorgänge seit Skriptstart: Speicher 0, Einstellungen 0, LED 0
     | 
-    | Letzte Meldungen:
+    | Störungen (gespeichert, neueste zuerst): keine
+    | 
+    | Letzte Meldungen (seit Skriptstart):
     | 19.10. 15:00 Selbsttest Wetter: ok
-    | 19.10. 15:00 gestartet, Bodenkonto 0 mm, Normalleistung noch nicht gelernt
+    | 19.10. 15:00 gestartet, Bodenkonto 0 mm, Pumpe Voreinstellung
   [Konsole] offenen Access Point abgeschaltet
   [Konsole] Sicherheit: Gerätepasswort AUS – Empfehlung: --neues-passwort <pw> oder in der App setzen, Access Point aus, Steuerung über Bluetooth aus
   [Konsole] Wächter-Zeitplan: alle 5 min, aktiv

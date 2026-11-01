@@ -87,7 +87,7 @@ function lauf(seed) {
   if (w.crashed) fehler.push('Absturz: ' + w.crashed.err.split('\n')[0]);
   if (w.limits.timers > 5 || w.limits.rpc > 5 || w.limits.handlers > 5) fehler.push('Grenzen: ' + JSON.stringify(w.limits));
   if ((w.maxText || 0) > 255) fehler.push('Statustext ' + w.maxText + ' Byte');
-  for (const x of w.runs()) if (x.min > 161) fehler.push('Lauf ' + x.min.toFixed(0) + ' min');
+  for (const x of w.runs()) if (x.min > 131) fehler.push('Lauf ' + x.min.toFixed(0) + ' min');
   // Jeder Lauf höchstens 120 min: eigene Läufe per Timer; eine Handgabe, wenn das Skript sie beim Einschalten sah. Stand das
   // Skript, übernimmt sie der nächste Skriptstart und kürzt sie auf 120 min ab Beginn, oder schaltet gleich ab, wenn die um sind
   const handAn = w.logs.filter((l) => /Pumpe an \(hand\)/.test(l.msg)).map((l) => l.t);
@@ -99,7 +99,7 @@ function lauf(seed) {
     let grenze;
     if (gesehen) grenze = 120.5;
     else if (st1 !== undefined && st1 < x.off) grenze = Math.max(120.5, (st1 - x.on) / M + 0.5);
-    else continue;                        // während des ganzen Laufs kein Skript: es bleibt die Notabschaltung (160 min)
+    else continue;                        // während des ganzen Laufs kein Skript: es bleibt die Notabschaltung (130 min)
     hand++;
     if (x.min > grenze) fehler.push('Handgabe ' + x.min.toFixed(1) + ' min' + (gesehen ? '' : ' (übernommen)'));
   }

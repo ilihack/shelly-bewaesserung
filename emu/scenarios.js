@@ -30,8 +30,8 @@ function common(w, name) {
   check(name + ': kein Absturz', !w.crashed, w.crashed && w.crashed.err.split('\n')[0]);
   check(name + ': Statustext <= 255 Byte', (w.maxText || 0) <= 255, String(w.maxText));
   maxTextAll = Math.max(maxTextAll, w.maxText || 0);
-  check(name + ': Grenzen (Timer<=5, RPC<=5, Handler<=5)', w.limits.timers <= 5 && w.limits.rpc <= 5 && w.limits.handlers <= 5,
-    JSON.stringify(w.limits));
+  check(name + ': Grenzen (Timer<=5, RPC<=5, Handler<=5, Speicher je Eintrag <= 1024 Byte)', w.limits.timers <= 5 && w.limits.rpc <= 5 &&
+    w.limits.handlers <= 5 && Object.values(w.maxStore).every(n => n <= 1024), JSON.stringify(w.limits) + ' ' + JSON.stringify(w.maxStore));
 }
 function runsInfo(w) { return w.runs().map(r => lt(w, r.on) + ' ' + (r.min ? r.min.toFixed(1) + 'min' : 'läuft') + ' (' + r.src + '->' + (r.offSrc || '') + ')').join('; '); }
 function logHas(w, re) { return w.logs.some(l => re.test(l.msg)); }
@@ -54,7 +54,7 @@ scenarios.S01_inbetriebnahme = function () {
   const w = mkWorld(T(2027, 5, 10, 6, 0), { weather: weatherConst(3.5) });
   w.runFor(2 * M);
   check('S01 initial_state off', w.swCfg.initial_state === 'off', w.swCfg.initial_state);
-  check('S01 auto_off 9600 s', w.swCfg.auto_off === true && w.swCfg.auto_off_delay === 9600);
+  check('S01 auto_off 7800 s (130 min)', w.swCfg.auto_off === true && w.swCfg.auto_off_delay === 7800);
   check('S01 Name gesetzt', w.swCfg.name === 'Brunnenpumpe');
   check('S01 Grenzen unverändert (Werk)', w.swCfg.power_limit === 2500 && w.swCfg.current_limit === 12);
   check('S01 7 Bedienelemente', Object.keys(w.vc).length === 7, Object.keys(w.vc).join(','));
@@ -80,7 +80,7 @@ scenarios.S02_sommerwoche = function () {
   check('S02 höchstens ein Lauf je Tag', new Set(days).size === days.length);
   check('S02 Laufzeit passt zu 5..15 mm', auto.every(r => r.min >= minFor(5) - 1 && r.min <= minFor(15) + 0.5), runsInfo(w));
   const st = w.state();
-  check('S02 Normalleistung gelernt ~1320 W', st.pn > 1250 && st.pn < 1400, st.pn);
+  check('S02 Läufe lernen nichts: Voreinstellung bleibt, bis per Taster angelernt', st.pn === 0 && !st.pc, st.pn + '/' + st.pc);
   // Bilanz: Verdunstung 10 Tage * 4.5 * 0.8 = 36 mm (Tag 1 ab Start nicht gezählt). Gegossen sollte etwa Verdunstung minus Restdefizit sein.
   const applied = auto.reduce((a, r) => a + r.min / 60 * RATE, 0);
   check('S02 gegossen plausibel (25..40 mm)', applied > 25 && applied < 40, applied.toFixed(1) + ' mm');
@@ -410,9 +410,10 @@ scenarios.S20_neu_einlernen = function () {
   w.powerFail(1000); w.runFor(3 * M);
   w.pressVcButton('button:200');
   w.runFor(M);
-  check('S20 Normalleistung zurückgesetzt', w.state().pn === 0, String(w.state().pn));
+  check('S20 Knopf im Bedienfeld: angelernte Werte verworfen', w.state().pn === 0 && w.state().pc === 0, String(w.state().pn));
   w.run(T(2027, 6, 1, 13, 0));
-  check('S20 neu gelernt ~1320 W', Math.abs(w.state().pn - 1320) < 60, String(w.state().pn));
+  check('S20 danach lernt ein Lauf nichts: Voreinstellung 600/2100 W', w.runs().length >= 1 && w.state().pn === 0 &&
+    /Untergrenze 600 W, Obergrenze 2100 W/.test(w.endpoint('info').body), runsInfo(w) + ' pn=' + w.state().pn);
   common(w, 'S20');
 };
 
@@ -434,7 +435,7 @@ scenarios.S22_erststart_ohne_internet = function () {
   // Gerät wird ohne Internet und ohne gespeicherten Zeitanker eingesteckt
   w.internet = false; w.storage = {}; w.powerFail(1000); w.runFor(5 * M);
   const p = berlinParts(w.devUnix() * 1000);
-  check('S22 ohne Internet und Anker: Einstecken gilt als 15. April 10:00', p.date === '2026-04-15' && p.hh === 10 && p.mm <= 5,
+  check('S22 ohne Internet und Anker: Einstecken gilt als 1. April 10:00', p.date === '2026-04-01' && p.hh === 10 && p.mm <= 5,
     p.date + ' ' + p.hh + ':' + p.mm);
   check('S22 Status nennt angenommene Uhrzeit', /Uhr angenommen/.test(w.vcText()), w.vcText());
   w.runFor(6 * M);
@@ -568,7 +569,7 @@ scenarios.S28_led = function () {
     off().brightness === 100 && w.plugsUi.leds.colors['switch:0'].on.brightness === 100, JSON.stringify(w.plugsUi.leds));
   check('S28 LED blau, solange die Pumpe läuft', JSON.stringify(w.plugsUi.leds.colors['switch:0'].on.rgb) === '[0,0,100]');
   w.run(T(2027, 6, 1, 10, 20)); w.pump.mode = 'dry'; w.runFor(5 * M);
-  check('S28 LED violett nach Störung', JSON.stringify(off().rgb) === '[100,0,100]', JSON.stringify(off()));
+  check('S28 LED rot nach Störung', JSON.stringify(off().rgb) === '[100,0,0]', JSON.stringify(off()));
   w.pump.mode = 'normal';
   w.run(T(2027, 6, 2, 0, 10));
   check('S28 LED am nächsten Tag wieder grün', JSON.stringify(off().rgb) === '[0,100,0]', JSON.stringify(off()));
@@ -823,7 +824,7 @@ scenarios.S38_nur_zeitserver = function () {
   check('S38b gestellte Zeit nicht gemeldet: Schätzung im Skript, nie vor 10:00; mit Zeitserver um 10:00', gesch &&
     r4.every(x => berlinParts(x.on).hh >= 10) && r4b.length >= 1 && r4b.every(x => berlinParts(x.on).hh === 10) &&
     !/Uhr geschätzt/.test(w4.vcText()), runsInfo(w4) + ' / ' + w4.vcText());
-  // c) Erststart ohne Zeitserver, Internet da: Einstecken gilt als 15. April 10:00 (echt 20. April 07:00). Wetterantworten
+  // c) Erststart ohne Zeitserver, Internet da: Einstecken gilt als 1. April 10:00 (echt 20. April 07:00). Wetterantworten
   //    tragen ein anderes Datum und werden nicht verbucht (geschätzt wie ohne Internet). Drei Tage später kommt der
   //    Zeitserver: Tagesmarken verschoben, das Konto stimmt danach wie Tag für Tag gerechnet
   const w6 = mkWorld(T(2026, 4, 20, 7, 0), { weather: () => ({ et0: 3.0, rain: 0, prob: 0, tmin: 10, tmax: 22 }) });
@@ -840,7 +841,7 @@ scenarios.S38_nur_zeitserver = function () {
   const v6 = e6.length ? +(/Defizit ([\d.]+) mm/.exec(e6[e6.length - 1]) || [0, -9])[1] : -9;
   const i6 = w6.endpoint('info').body;
   check('S38c angenommenes Datum: Wetter mit anderem Datum nicht verbucht; Zeitserver: Konto wie Tag für Tag gerechnet',
-    vor.length >= 2 && vor.every(m => /ohne Internet/.test(m)) && logHas(w6, /Tagesmarken um 5 Tage verschoben/) &&
+    vor.length >= 2 && vor.every(m => /ohne Internet/.test(m)) && logHas(w6, /Tagesmarken um 19 Tage verschoben/) &&
     Math.abs(v6 - d6) <= 0.15, vor.join(' | ') + ' // ' + e6.join(' | ') + ' / unabhängig ' + d6.toFixed(2) + ' / ' + runsInfo(w6));
   check('S38c Diagnose danach mit echtem Datum: Saison seit dem Einstecken (20.04.)', /\nSaison seit 20\.04\.:/.test(i6), i6.split('\n')[6]);
   // d) Stromausfall bis 22:00, der Zeitanker sagt 10:00; WLAN und Zeitserver kommen erst 4 min nach dem Hochfahren
@@ -976,7 +977,7 @@ scenarios.S43_anlauf_und_wiedereinschalten = function () {
   const off = () => w.plugsUi.leds.colors['switch:0'].off;
   check('S43 Abschaltung beim Anlauf als Störung gemeldet', /Störung .*Firmware-Schutz: overcurrent/.test(w.vcText()), w.vcText());
   w.run(T(2027, 6, 1, 10, 9));
-  check('S43 LED violett', JSON.stringify(off().rgb) === '[100,0,100]', JSON.stringify(off()));
+  check('S43 LED rot', JSON.stringify(off().rgb) === '[100,0,0]', JSON.stringify(off()));
   w.run(T(2027, 6, 3, 13, 0));
   const r = w.runs(), p1 = berlinParts(r[1] ? r[1].on : 0);
   check('S43 Nachlauf nach 6 min mit voller Menge', r.length >= 2 && p1.d === 1 && p1.hh === 10 && p1.mm >= 6 && p1.mm <= 7 &&
@@ -1075,7 +1076,7 @@ scenarios.S47_zweite_instanz = function () {
   check('S47 binnen 1 h: Wächter wieder aktiv, alle 5 min', w.jobs.length === 2 && j1.enable === true && j1.timespec === '0 */5 * * * *', JSON.stringify(w.jobs));
   check('S47 Firmware-Update in der App abgeschaltet: bleibt aus', upJob(w).enable === false, JSON.stringify(w.jobs));
   check('S47 binnen 1 h: Notabschaltung an, Einschaltzustand aus, kein Wiedereinschalten', w.swCfg.auto_off === true &&
-    w.swCfg.auto_off_delay === 9600 && w.swCfg.initial_state === 'off' && w.swCfg.auto_on === false, JSON.stringify(w.swCfg));
+    w.swCfg.auto_off_delay === 7800 && w.swCfg.initial_state === 'off' && w.swCfg.auto_on === false, JSON.stringify(w.swCfg));
   w.jobs.length = 0;
   w.runFor(61 * M);
   check('S47 gelöschte Zeitpläne binnen 1 h neu angelegt', w.jobs.length === 2 && wdJob(w) && wdJob(w).enable === true &&
@@ -1185,7 +1186,7 @@ scenarios.S51_led_nach_fehler = function () {
   };
   w.run(T(2027, 6, 1, 12, 0)); w.pump.mode = 'normal';
   const off = () => JSON.stringify(w.plugsUi.leds.colors['switch:0'].off.rgb);
-  check('S51 nach Störung violett', off() === '[100,0,100]', off());
+  check('S51 nach Störung rot', off() === '[100,0,0]', off());
   w.run(T(2027, 6, 2, 13, 0));
   check('S51 Fehler beim Zurückstellen nach dem nächsten fehlerfreien Lauf: binnen 2 h doch grün', failed === 1 && off() === '[0,100,0]', failed + ' ' + off());
   common(w, 'S51');
@@ -1267,18 +1268,18 @@ scenarios.S54_diagnose = function () {
   let p = w.endpoint('info'), maxB = Buffer.byteLength(p.body);
   check('S54 Seite: Text in UTF-8, Uhrzeit, LED wechselt erst nach 30 min auf grün', p.code === 200 && p.sent &&
     JSON.stringify(p.headers) === '[["Content-Type","text/plain; charset=utf-8"]]' && /^Bewässerung 01\.06\.2027 13:00\n/.test(p.body) &&
-    /\nLED: violett, wechselt bald auf grün – alles in Ordnung\n/.test(p.body), p.body);
+    /\nLED: rot, wechselt bald auf grün – alles in Ordnung\n/.test(p.body), p.body);
   w.run(T(2027, 6, 1, 13, 30)); p = w.endpoint('info'); maxB = Math.max(maxB, Buffer.byteLength(p.body));
   check('S54 letzte Störung erledigt, Saison gezählt, letzte Meldungen neueste zuerst', /\nLED: grün – alles in Ordnung\n/.test(p.body) &&
     /\nLetzte Störung: 01\.06\.2027 10:1\d Trockenlauf oder Hahn zu \(\d+ W < 990 W\) \(erledigt\)\n/.test(p.body) &&
     /\nSaison seit 01\.06\.: Automatik 2, Hand 0, zusammen 1\d(,\d)? mm, Störungen 1\n/.test(p.body) &&
-    /\nLetzte Meldungen:\n01\.06\. 1[23]:\d\d Pumpe aus: Ende\/Stopp/.test(p.body) && /Flash-Schreibvorgänge seit Skriptstart: Speicher \d+, Einstellungen \d+, LED [23]\n/.test(p.body), p.body);
+    /\nLetzte Meldungen \(seit Skriptstart\):\n01\.06\. 1[23]:\d\d Pumpe aus: Ende\/Stopp/.test(p.body) && /Flash-Schreibvorgänge seit Skriptstart: Speicher \d+, Einstellungen \d+, LED [23]\n/.test(p.body), p.body);
   // b) nach einem Stromausfall: Störung und Saison bleiben (gespeichert), Neustart sichtbar, Meldungen neu (nur RAM)
   w.powerFail(10 * M); w.runFor(15 * M);
   p = w.endpoint('info'); maxB = Math.max(maxB, Buffer.byteLength(p.body));
   check('S54b nach Stromausfall: Störung und Saison erhalten, Neustart mit letztem Stand davor', /Letzte Störung: 01\.06\.2027 10:1\d Trockenlauf/.test(p.body) &&
     /Automatik 2, Hand 0/.test(p.body) && /\nGerät: Firmware 1\.7\.1, an seit 01\.06\.2027 13:40 \(5 min\), davor zuletzt gespeichert 01\.06\.2027 1[23]:\d\d; Skript läuft seit 5 min\n/.test(p.body) &&
-    /gestartet, Bodenkonto/.test(p.body) && !/Pumpe/.test(p.body.split('Letzte Meldungen:')[1]), p.body);
+    /gestartet, Bodenkonto/.test(p.body) && !/Pumpe an \(|Pumpe aus:/.test(p.body.split('Letzte Meldungen (seit Skriptstart):')[1]), p.body);
   // c) Wetterdienst einen Vormittag weg: Beginn und Dauer des letzten Ausfalls
   w.httpCode = (url) => (w.t < T(2027, 6, 2, 12, 0) && /past_days|temperature_2m_min&timezone/.test(url) ? 503 : 200);
   w.run(T(2027, 6, 2, 11, 30)); const off = w.endpoint('info').body;
@@ -1286,13 +1287,13 @@ scenarios.S54_diagnose = function () {
   check('S54c Internetausfall ab dem ersten gescheiterten Versuch: währenddessen „fehlt seit“, danach Beginn und Dauer',
     /\nInternet: Wetterdienst fehlt seit 02\.06\.2027 10:0\d\n/.test(off) && /\nInternet: ok, letzter Ausfall 02\.06\.2027 10:0\d, 2 h\n/.test(p.body),
     off.split('\n')[9] + ' / ' + p.body.split('\n')[9]);
-  // f) die letzten 10 Meldungen als Ring (der Shelly kennt kein Array.shift): nach dem Überlauf genau 10, neueste zuerst
+  // f) die letzten 6 Meldungen als Ring (der Shelly kennt kein Array.shift): nach dem Überlauf genau 6, neueste zuerst
   const logFn = (fs.readFileSync(FILE, 'utf8').match(/function ([\w$]+)\(\w+\)\{\s*var \w+ ?= ?[\w.]+ ?> ?1e9[^]{0,120}print\("\[BW\] "/) || [])[1] || 'log';
   for (let i = 1; i <= 23; i++) w.eval(logFn + '("Ringtest ' + i + '")');
-  const zeilen = w.endpoint('info').body.split('Letzte Meldungen:\n')[1].split('\n').map(z => z.replace(/^(\d\d\.\d\d\. ~?\d\d:\d\d|--\.-- --:--) /, ''));
-  const neueste = w.logs.map(l => l.msg).filter(m => /^\[BW\] /.test(m)).map(m => m.slice(5)).slice(-10).reverse();
-  check('S54f letzte Meldungen: nach 23 weiteren genau 10, neueste zuerst', zeilen.length === 10 &&
-    zeilen.every((z, i) => z.slice(0, 30) === neueste[i].slice(0, 30)) && zeilen[0] === 'Ringtest 23' && zeilen[9] === 'Ringtest 14', zeilen.join(' | '));
+  const zeilen = w.endpoint('info').body.split('Letzte Meldungen (seit Skriptstart):\n')[1].split('\n').map(z => z.replace(/^(\d\d\.\d\d\. ~?\d\d:\d\d|--\.-- --:--) /, ''));
+  const neueste = w.logs.map(l => l.msg).filter(m => /^\[BW\] /.test(m)).map(m => m.slice(5)).slice(-6).reverse();
+  check('S54f letzte Meldungen: nach 23 weiteren genau 6, neueste zuerst', zeilen.length === 6 &&
+    zeilen.every((z, i) => z.slice(0, 30) === neueste[i].slice(0, 30)) && zeilen[0] === 'Ringtest 23' && zeilen[5] === 'Ringtest 18', zeilen.join(' | '));
   // d) Aufrufe ändern nichts: 100 Aufrufe, kein Schreibvorgang, Zustand gleich
   const s0 = JSON.stringify(w.state()), n0 = w.storageWrites.length + w.cfgCallT.length + w.ledWrites.length;
   for (let i = 0; i < 100; i++) w.endpoint('info');
@@ -1353,9 +1354,9 @@ scenarios.S55_led_letzte_stoerung = function () {
   w.pump.mode = 'dry';
   w.powerFail(1000); w.run(T(2027, 6, 1, 14, 0));
   const led = () => JSON.stringify(w.plugsUi.leds.colors['switch:0'].off.rgb);
-  check('S55 Trockenlauf: LED violett', led() === '[100,0,100]' && /Störung/.test(w.vcText()), led() + ' ' + w.vcText());
+  check('S55 Trockenlauf: LED rot', led() === '[100,0,0]' && /Störung/.test(w.vcText()), led() + ' ' + w.vcText());
   w.run(T(2027, 6, 1, 20, 0)); w.powerFail(60e3); w.run(T(2027, 6, 2, 9, 0));
-  check('S55 nach Neustart und Mitternacht: weiter violett, Status nennt die Störung', led() === '[100,0,100]' &&
+  check('S55 nach Neustart und Mitternacht: weiter rot, Status nennt die Störung', led() === '[100,0,0]' &&
     /Störung 01\.06\. \d\d:\d\d: Trockenlauf/.test(w.vcText()), led() + ' ' + w.vcText());
   w.pump.mode = 'normal'; w.run(T(2027, 6, 2, 12, 30));
   check('S55 nächster Lauf fehlerfrei: LED grün, Störung erledigt', led() === '[0,100,0]' && !/Störung/.test(w.vcText()) &&
@@ -1424,7 +1425,7 @@ scenarios.S57_laufzeit_120_min = function () {
   const a2 = w2.runs();
   check('S57c Automatik 15 mm in 105 min, danach Handgabe 6 mm in 42 min', a2.length === 2 && Math.abs(a2[0].min - minFor(15)) < 0.5 &&
     Math.abs(a2[1].min - minFor(6)) < 0.5, runsInfo(w2));
-  // d) Taster, während das Skript steht (Firmware-Notabschaltung 160 min): der Wächter startet es 4 min später, es
+  // d) Taster, während das Skript steht (Firmware-Notabschaltung 130 min): der Wächter startet es 4 min später, es
   //    übernimmt den Lauf als Handgabe und kürzt den Timer: aus nach 120 min ab Beginn
   const w3 = learnedWorld(T(2027, 6, 1, 13, 0));
   w3.powerFail(1000); w3.runFor(2 * M); w3.stopScript(); w3.runFor(M);
@@ -1452,9 +1453,9 @@ scenarios.S58_einschalten_abgelehnt = function () {
   w.switchRefuse = 1e9;
   w.powerFail(1000); w.run(T(2027, 6, 1, 10, 10));
   const s0 = w.state();
-  check('S58 abgelehnt: Störung in der Statuszeile, neue Versuche bis 12:30, LED violett', w.runs().length === 0 &&
+  check('S58 abgelehnt: Störung in der Statuszeile, neue Versuche bis 12:30, LED rot', w.runs().length === 0 &&
     /^Störung 10:0\d: Einschalten abgelehnt: overtemperature\. Neuer Versuch bis 12:30/.test(w.vcText()) &&
-    led() === '[100,0,100]' && s0.fu > 0, led() + ' ' + w.vcText());
+    led() === '[100,0,0]' && s0.fu > 0, led() + ' ' + w.vcText());
   w.run(T(2027, 6, 1, 13, 0));
   const tries = w.logs.filter(l => /Einschalten abgelehnt/.test(l.msg)).length;
   check('S58 bis 12:30 abgelehnt: kein Lauf, nächster Versuch morgen, je Minute höchstens 2 Versuche',
@@ -1473,7 +1474,7 @@ const withLatLon = (code) => code.replace('LAT: null, LON: null', 'LAT: 49.51, L
 const ledOf = (x) => JSON.stringify(x.plugsUi.leds.colors['switch:0'].off.rgb);
 
 scenarios.S59_pruefer_uhr_und_speicher = function () {
-  // a) Erststart ohne Zeitserver: Einstecken gilt als 15. April 10:00, geprüft nach 10 min. Der Zeitserver stellt die Uhr,
+  // a) Erststart ohne Zeitserver: Einstecken gilt als 1. April 10:00, geprüft nach 10 min. Der Zeitserver stellt die Uhr,
   //    während der Wetterabruf läuft (Antwort erst nach dem nächsten Takt): die Antwort wird verworfen, die Tagesmarken
   //    sind verschoben, kein Lauf aus falsch gebuchten Tagen
   const w = mkWorld(T(2027, 6, 1, 6, 0), { weather: weatherConst(4.5), code: withLatLon(CODE) });
@@ -1515,13 +1516,13 @@ scenarios.S60_pruefer_einstellungen = function () {
   w.runFor(10 * M);
   const led = ledOf(w);
   w.runFor(60 * M);
-  check('S60 Bremse für das Bedienfeld erschöpft: LED trotzdem violett, Notabschaltung binnen 1 h zurück',
-    gebremst && led === '[100,0,100]' && w.swCfg.auto_off === true, 'gebremst=' + gebremst + ' LED ' + led + ' auto_off=' + w.swCfg.auto_off);
+  check('S60 Bremse für das Bedienfeld erschöpft: LED trotzdem rot, Notabschaltung binnen 1 h zurück',
+    gebremst && led === '[100,0,0]' && w.swCfg.auto_off === true, 'gebremst=' + gebremst + ' LED ' + led + ' auto_off=' + w.swCfg.auto_off);
   common(w, 'S60');
 };
 
 scenarios.S61_led_schreibvorgaenge = function () {
-  // Jede LED-Farbe ist ein Flash-Schreibvorgang: violett nach 2 min Bestand, jede andere Farbe erst nach 30 min,
+  // Jede LED-Farbe ist ein Flash-Schreibvorgang: rot nach 2 min Bestand, jede andere Farbe erst nach 30 min,
   // höchstens 12 am Tag.
   // a) eine Woche lang fehlt der Wetterdienst jeden Vormittag 10:00 bis 11:05: erkannt 11:00, zurück 11:15 -> keine LED-Wechsel
   const a = learnedWorld(T(2027, 6, 1, 6, 30));
@@ -1542,12 +1543,12 @@ scenarios.S61_led_schreibvorgaenge = function () {
   check('S61b zwei Tage ohne Wetterdienst: gelb 30 min nach dem Erkennen, grün 30 bis 47 min nach der Rückkehr, 2 Wechsel',
     lw.length === 2 && seit(lw[0], T(2027, 6, 1, 11, 0)) >= 30 && seit(lw[0], T(2027, 6, 1, 11, 0)) <= 32 &&
     seit(lw[1], T(2027, 6, 3, 12, 0)) >= 30 && seit(lw[1], T(2027, 6, 3, 12, 0)) <= 47, lw.map(t => lt(b, t)).join(', '));
-  // c) Störung: violett binnen 3 min
+  // c) Störung: rot binnen 3 min
   const c = learnedWorld(T(2027, 6, 1, 14, 0));
   c.powerFail(1000); c.runFor(10 * M);
   c.pump.mode = 'dry'; c.press(); c.runFor(10 * M); c.pump.mode = 'normal';
   const trip = c.relay.filter(x => !x.on).pop(), vi = c.ledWrites[c.ledWrites.length - 1];
-  check('S61c Störung: violett binnen 3 min', ledOf(c) === '[100,0,100]' && vi - trip.t <= 3 * M, ((vi - trip.t) / 1000) + ' s');
+  check('S61c Störung: rot binnen 3 min', ledOf(c) === '[100,0,0]' && vi - trip.t <= 3 * M, ((vi - trip.t) / 1000) + ' s');
   // d) Störung und fehlerfreier Lauf wechseln den ganzen Tag (Handgaben alle 35 min): höchstens 12 LED-Wechsel am Tag
   const d = learnedWorld(T(2027, 6, 1, 14, 0));
   d.powerFail(1000); d.runFor(10 * M);
@@ -1569,7 +1570,7 @@ scenarios.S62_pruefer_rest = function () {
   a.switchRefuse = 1e9;
   a.powerFail(1000); a.run(T(2027, 6, 2, 10, 10));
   check('S62 Einschalten am Folgetag wieder abgelehnt: Störung neu datiert', /^Störung 10:0\d: Einschalten abgelehnt/.test(a.vcText()) &&
-    dayNo(a.state().fu * 1000) === dayNo(T(2027, 6, 2, 12)) && ledOf(a) === '[100,0,100]', a.vcText());
+    dayNo(a.state().fu * 1000) === dayNo(T(2027, 6, 2, 12)) && ledOf(a) === '[100,0,0]', a.vcText());
   // b) nach einem Stromausfall steht das WLAN erst 10 s nach dem Hochfahren: bald kein „ohne Internet“, keine LED-Wechsel
   const b = learnedWorld(T(2027, 6, 1, 6, 30));
   b.storage.s = JSON.stringify(Object.assign(JSON.parse(b.storage.s), { dp: dayNo(T(2027, 5, 31, 12)), d: 4 }));
@@ -1581,6 +1582,195 @@ scenarios.S62_pruefer_rest = function () {
   check('S62b WLAN erst nach dem Hochfahren: nach 4 min kein „ohne Internet“, keine LED-Schreibvorgänge',
     !/ohne Internet/.test(b.vcText()) && b.ledWrites.length === l0, b.vcText() + ' | LED +' + (b.ledWrites.length - l0));
   common(a, 'S62'); common(b, 'S62b');
+};
+
+// ------------------------------------------------------------------
+// Anlernen per Taster: Hahn offen, einstecken, in der ersten Minute 5× drücken; Signal = Relais 2 s aus, dann Hahn zu
+function kalWorld(o) {                    // nicht angelerntes Gerät, eingesteckt am 15.05.2027 14:00 (keine Automatik)
+  o = o || {};
+  const w = learnedWorld(T(2027, 5, 15, 14, 0));
+  w.storage.s = JSON.stringify(Object.assign(JSON.parse(w.storage.s), { dp: dayNo(T(2027, 5, 14, 12)), d: 3, pn: 0, ln: 0 }, o.s || {}));
+  if (o.Pn) w.pump.Pn = o.Pn;
+  if (o.closedRel) w.pump.closedRel = o.closedRel;
+  if (o.noise !== undefined) w.pump.noise = o.noise;
+  if (o.mode) w.pump.mode = o.mode;
+  w.powerFail(1000); w.runFor(1500);       // Hochfahren nach 1 s, Skript nach weiteren 3 s
+  return w;
+}
+function presses(w, n, firstS, gapS) {    // n Drücke, der erste firstS nach dem Hochfahren
+  const b = w.dev.bootAt;
+  for (let i = 0; i < n; i++) w.at(b + (firstS + i * gapS) * 1000, () => w.press());
+}
+function runUntil(w, cond, maxMs) { const end = w.t + maxMs; while (w.t < end && !cond()) w.runFor(250); return cond(); }
+const kalSig = (w) => {                   // Signal: das Skript schaltet aus und gleich wieder ein -> [aus, wieder an]
+  const r = w.relay.filter(x => x.src === 'loopback');
+  for (let i = 1; i < r.length; i++) if (!r[i - 1].on && r[i].on) return [r[i - 1].t, r[i].t];
+  return null;
+};
+const kalLog = (w) => w.logs.filter(l => /Anlernen|Angelernt|Pumpenwerte/.test(l.msg)).map(l => lt(w, l.t).slice(11) + ' ' + l.msg.slice(5)).join(' | ');
+function kalTap(w, afterS) {              // nach dem Signal afterS warten, dann Hahn zu
+  runUntil(w, () => !!kalSig(w), 3 * M);
+  w.after(afterS * 1000, () => { w.pump.mode = 'closed'; });
+}
+scenarios.S63_anlernen = function () {
+  // a) regulär: nach dem Signal 8 s später zugedreht
+  const w = kalWorld();
+  presses(w, 5, 10, 1.5);
+  w.runFor(30e3);
+  const t1 = w.vcText(), tm1 = w.dev.timer && w.dev.timer.dur;
+  check('S63a 5 Drücke in der ersten Minute: Anlernen läuft, Firmware-Timer 300 s', /^Anlernen: Hahn offen lassen, Normalleistung messen/.test(t1) &&
+    tm1 === 300, t1 + ' / ' + tm1);
+  kalTap(w, 8);
+  const sig = kalSig(w), on5 = w.relay.filter(x => x.src === 'button').slice(-1)[0];
+  w.runFor(70e3);
+  const st = w.state(), last = w.relay.slice(-1)[0];
+  check('S63a Signal: 60 s nach dem Anlernbeginn 2-3 s aus', sig && sig[1] - sig[0] >= 2000 && sig[1] - sig[0] <= 3500 &&
+    sig[0] - on5.t >= 60e3 && sig[0] - on5.t <= 63e3, JSON.stringify(sig && [(sig[0] - on5.t) / 1000, (sig[1] - sig[0]) / 1000]));
+  check('S63a übernommen: normal ~1320 W, Hahn zu ~818 W, Untergrenze in der Mitte ~1069 W, danach aus',
+    Math.abs(st.pn - 1320) <= 20 && Math.abs(st.pc - 818) <= 20 && st.kt > 1 && !w.dev.output && last.src === 'loopback' &&
+    last.t - on5.t < 2.5 * M && logHas(w, /Angelernt: 13\d\d W, Hahn zu 8\d\d W, Untergrenze 10[5-8]\d W/), JSON.stringify({ pn: st.pn, pc: st.pc }) + ' · ' + kalLog(w));
+  const fb = w.dev.timer;
+  check('S63a nach dem Signal: Firmware-Timer auf den Rest der 300 s', !w.dev.output && fb === null, JSON.stringify(fb));
+  check('S63a Status-Abo nach 90 s beendet (Handle 0)', Object.keys(w.dev.stHandlers).length === 0 && w.dev.stSeq === 1, JSON.stringify(Object.keys(w.dev.stHandlers)));
+  let i1 = w.endpoint('info').body;
+  check('S63a Diagnose: angelernt mit Datum, beide Werte, Grenzen', /\nPumpe: angelernt 15\.05\.2027 14:0\d, normal 13\d\d W, Hahn zu 8\d\d W; Untergrenze 10[5-8]\d W, Obergrenze 17\d\d W\n/.test(i1),
+    i1.split('\n').filter(z => /^Pumpe/.test(z)).join(''));
+  // im Betrieb: Hahn offen läuft, zugedreht schaltet die Unterlast nach Anlauf (40 s) plus 8 s ab
+  w.pump.mode = 'normal'; w.runFor(3 * M); w.press(); w.runFor(2 * M);
+  const ok1 = w.dev.output;
+  w.pump.mode = 'closed'; const tz = w.t; w.runFor(30e3);
+  const tr = w.relay.filter(x => !x.on && x.t > tz)[0];
+  check('S63a danach: Handgabe läuft bei offenem Hahn, zugedreht nach ~8 s aus (Unterlast)', ok1 && tr && tr.t - tz <= 12e3 &&
+    logHas(w, /Schutz: unterlast \(8\d\d W < 10[5-8]\d W\)/), (tr ? (tr.t - tz) / 1000 + ' s' : 'kein Aus') + ' · ' + runsInfo(w));
+  w.powerFail(10e3); w.runFor(2 * M);
+  i1 = w.endpoint('info').body;
+  check('S63a nach Stromausfall: angelernte Werte und Störung gespeichert', w.state().pn === st.pn && w.state().pc === st.pc &&
+    /\nPumpe: angelernt 15\.05\.2027/.test(i1) && /\nStörungen \(gespeichert, neueste zuerst\):\n15\.05\.2027 14:0\d Trockenlauf oder Hahn zu \(8\d\d W < 10\d\d W\)\n/.test(i1),
+    i1.split('\n').slice(-12).join(' | '));
+  // Bedienfeld-Knopf: zurück auf die Voreinstellung
+  w.pressVcButton('button:200'); w.runFor(M);
+  i1 = w.endpoint('info').body;
+  check('S63a Knopf im Bedienfeld: Voreinstellung (600/2100 W), Hinweis zum Anlernen', w.state().pn === 0 && w.state().pc === 0 &&
+    w.state().kt === 0 && /\nPumpe: Voreinstellung, nicht angelernt; Untergrenze 600 W, Obergrenze 2100 W\n/.test(i1) &&
+    logHas(w, /Pumpe auf Voreinstellung; anlernen: einstecken, 5× drücken/), w.vcText());
+  common(w, 'S63a');
+
+  // b) nicht zugedreht: Normalleistung übernommen, Untergrenze 75 %
+  const b = kalWorld(); presses(b, 5, 10, 1.5); b.runFor(4 * M);
+  check('S63b nicht zugedreht: normal übernommen, Untergrenze 75 % (990 W), Diagnose „Hahn zu nicht erkannt“',
+    Math.abs(b.state().pn - 1320) <= 20 && b.state().pc === 0 && logHas(b, /Angelernt: 13\d\d W, Hahn nicht zugedreht, Untergrenze 9[89]\d W/) &&
+    /\nPumpe: angelernt 15\.05\.2027 14:0\d, normal 13\d\d W, Hahn zu nicht erkannt; Untergrenze 9[89]\d W/.test(b.endpoint('info').body), kalLog(b));
+  // c) Grenzen zu eng: zugedreht nur 14 % weniger -> nicht verwendet; 22 % weniger -> Mitte, je mindestens 10 % Abstand
+  const c = kalWorld({ closedRel: 0.86 }); presses(c, 5, 10, 1.5); kalTap(c, 8); c.runFor(80e3);
+  check('S63c Hahn zu nur 14 % weniger: nicht erkennbar, Untergrenze 75 %', c.state().pc === 0 && Math.abs(c.state().pn - 1320) <= 20 &&
+    logHas(c, /Angelernt: 13\d\d W, Hahn zu nur 1[345] % weniger, nicht erkennbar, Untergrenze 9[89]\d W/), kalLog(c));
+  const c2 = kalWorld({ closedRel: 0.78 }); presses(c2, 5, 10, 1.5); kalTap(c2, 8); c2.runFor(80e3);
+  const s2 = c2.state(), lo2 = (s2.pn + s2.pc) / 2;
+  check('S63c Hahn zu 22 % weniger: Untergrenze in der Mitte, zu beiden Seiten mindestens 10 % Abstand', s2.pc > 0 &&
+    lo2 <= s2.pn * 0.9 + 1 && lo2 >= s2.pc * 1.1, JSON.stringify(s2.pn + '/' + s2.pc + ' -> ' + lo2) + ' · ' + kalLog(c2));
+  // d) kleine Tauchpumpe 400 W: übernommen; Trockenlauf danach erkannt
+  const d = kalWorld({ Pn: 400, noise: 8 }); presses(d, 5, 10, 1.5); kalTap(d, 8); d.runFor(80e3);
+  const sd = d.state();
+  d.pump.mode = 'normal'; d.runFor(3 * M); d.press(); d.runFor(M); d.pump.mode = 'dry'; d.runFor(M);
+  check('S63d kleine Pumpe 400 W: angelernt (Hahn zu ~248 W), Trockenlauf danach erkannt', Math.abs(sd.pn - 400) <= 10 && Math.abs(sd.pc - 248) <= 10 &&
+    logHas(d, /Schutz: unterlast \(1\d\d W < 3[12]\d W\)/), JSON.stringify({ pn: sd.pn, pc: sd.pc }) + ' · ' + kalLog(d) + ' · ' + runsInfo(d));
+  // e) unplausibel: zu wenig, zu viel, unruhig -> abgebrochen, nichts übernommen, im Störungsprotokoll
+  const e = kalWorld({ Pn: 250, noise: 5 }); presses(e, 5, 10, 1.5); e.runFor(2 * M);
+  const ie = e.endpoint('info').body;
+  check('S63e 250 W: abgebrochen, nichts übernommen, gespeichert im Störungsprotokoll', e.state().pn === 0 && !e.dev.output &&
+    logHas(e, /Anlernen abgebrochen: 2[45]\d W zu wenig – nichts übernommen/) && /\n15\.05\.2027 14:0\d Anlernen abgebrochen \(2[45]\d W zu wenig\)/.test(ie),
+    kalLog(e) + ' · ' + ie.split('Störungen')[1]);
+  const e2 = kalWorld({ Pn: 2000 }); presses(e2, 5, 10, 1.5); e2.runFor(2 * M);
+  const e3 = kalWorld({ mode: 'airmix' }); presses(e3, 5, 10, 1.5); e3.runFor(2 * M);
+  check('S63e 2000 W zu viel, Luftgemisch unruhig: abgebrochen, nichts übernommen', e2.state().pn === 0 && e3.state().pn === 0 &&
+    logHas(e2, /Anlernen abgebrochen: 20\d\d W zu viel/) && logHas(e3, /Anlernen abgebrochen: unruhig \d+-\d+ W, Luft im Rohr\?/) &&
+    JSON.parse(e3.storage.f)[0].indexOf('ka:unruhig ') > 0, kalLog(e2) + ' // ' + kalLog(e3));
+  // f) Taster während des Anlernens (6. Druck): abgebrochen, nichts übernommen
+  const f = kalWorld(); presses(f, 5, 10, 1.5); f.at(f.dev.bootAt + 45e3, () => f.press()); f.runFor(2 * M);
+  check('S63f Taster während des Anlernens: aus, abgebrochen, nichts übernommen, im Störungsprotokoll', f.state().pn === 0 && !f.dev.output &&
+    logHas(f, /Anlernen abgebrochen: ausgeschaltet – nichts übernommen/) && /ka:ausgeschaltet/.test(f.storage.f || ''), kalLog(f));
+  // g) Geste zu spät, zu langsam oder nur 3 Drücke: kein Anlernen
+  const g1 = kalWorld(); presses(g1, 5, 65, 1.5); g1.runFor(2 * M);
+  const g2 = kalWorld(); presses(g2, 5, 10, 6); g2.runFor(2 * M);
+  const g3 = kalWorld(); presses(g3, 3, 10, 1.5); g3.runFor(2 * M);
+  check('S63g nach der ersten Minute, langsamer als 20 s, nur 3 Drücke: kein Anlernen, eine Handgabe läuft',
+    [g1, g2, g3].every(x => !logHas(x, /Anlernen/) && x.state().pn === 0 && x.dev.output && x.dev.timer && x.dev.timer.dur !== 300),
+    [g1, g2, g3].map(kalLog).join(' // '));
+  // h) Stromausfall während des Anlernens: nichts übernommen; Automatik aus: Anlernen läuft trotzdem durch
+  const h = kalWorld(); presses(h, 5, 10, 1.5); h.runFor(40e3); h.powerFail(5e3); h.runFor(2 * M);
+  const h2 = kalWorld(); h2.setVc('boolean:200', false); presses(h2, 5, 10, 1.5); kalTap(h2, 8); h2.runFor(80e3);
+  check('S63h Stromausfall: nichts übernommen; Automatik aus: Anlernen läuft durch', h.state().pn === 0 && !logHas(h, /Angelernt/) &&
+    h2.state().pc > 0 && logHas(h2, /Angelernt/), kalLog(h) + ' // ' + kalLog(h2));
+  // i) Relais geht nach dem Signal nicht wieder an: abgebrochen; Skript steht: der Firmware-Timer schaltet nach 300 s ab
+  const k = kalWorld(); presses(k, 5, 10, 1.5);
+  runUntil(k, () => k.relay.some(x => x.src === 'loopback' && !x.on), 3 * M); k.switchRefuse = 1; k.runFor(M);
+  const k2 = kalWorld(); presses(k2, 5, 10, 1.5); k2.runFor(40e3); k2.stopScript(); k2.runFor(6 * M);
+  const k2on = k2.logs.filter(x => /Anlernen: Hahn offen lassen/.test(x.msg))[0], k2off = k2.relay.filter(x => !x.on).slice(-1)[0];
+  check('S63i Relais bleibt nach dem Signal aus: abgebrochen; Skript steht: Firmware-Timer aus nach 300 s', k.state().pn === 0 &&
+    logHas(k, /Anlernen abgebrochen: Relais blieb aus/) && k2on && k2off && k2off.src === 'timer' && Math.abs(k2off.t - k2on.t - 300e3) <= 1500 &&
+    k2.state().pn === 0, kalLog(k) + ' // ' + (k2off ? k2off.src + ' ' + (k2off.t - k2on.t) / 1000 + ' s' : 'kein Aus'));
+  // j) Fehlbedienung: Hahn schon beim Anlernen zu -> als Normalleistung übernommen; im Betrieb meldet die Pumpe gleich
+  //    Überlast (sicher), neu anlernen
+  const j = kalWorld({ mode: 'closed' }); presses(j, 5, 10, 1.5); j.runFor(4 * M);
+  const sj = j.state(); j.pump.mode = 'normal'; j.press(); j.runFor(2 * M);
+  check('S63j Hahn beim Anlernen schon zu: übernommen, im Betrieb Überlast nach Anlauf', Math.abs(sj.pn - 818) <= 20 &&
+    logHas(j, /Schutz: ueberlast \(13\d\d W > 10\d\d W\)/) && !j.dev.output, JSON.stringify(sj.pn) + ' · ' + runsInfo(j));
+  // l) Stecker gleich nach dem Anlernen gezogen: Werte schon gespeichert (Schreibbremse greift hier nicht)
+  const l = kalWorld(); presses(l, 5, 10, 1.5); kalTap(l, 8);
+  runUntil(l, () => logHas(l, /Angelernt/), 2 * M); l.runFor(1500); l.powerFail(5e3); l.runFor(M);
+  check('S63l Stecker 1,5 s nach dem Anlernen gezogen: Werte gespeichert', l.state().pc > 0 && Math.abs(l.state().pn - 1320) <= 20, kalLog(l));
+  // m) Fehlbedienung: Brunnen leer beim Anlernen (Trockenlauf 554 W, ruhig, im Fenster 300-1900 W): ohne Hahn-zu-Messung
+  //    unter 600 W nichts übernommen; kleine Pumpe ohne Zudrehen ebenso. Mit Zudrehen übernimmt sie (S63d)
+  const m = kalWorld({ mode: 'dry' }); presses(m, 5, 10, 1.5); kalTap(m, 8); m.runFor(90e3);
+  const m2 = kalWorld({ Pn: 400, noise: 8 }); presses(m2, 5, 10, 1.5); m2.runFor(4 * M);
+  check('S63m Trockenlauf beim Anlernen, kleine Pumpe ohne Zudrehen: unter 600 W nichts übernommen', m.state().pn === 0 && m2.state().pn === 0 &&
+    logHas(m, /Anlernen abgebrochen: Hahn nicht zugedreht; unter 600 W nur mit Zudrehen \(Trockenlauf\?\) – nichts übernommen/) &&
+    /ka:trocken\? 5\d\d W/.test(m.storage.f || '') && logHas(m2, /unter 600 W nur mit Zudrehen/), kalLog(m) + ' // ' + kalLog(m2));
+  // n) Druck in der Signalpause bricht ab; abgebrochenes Anlernen hebt eine offene Störung nicht auf; Überstrom beim
+  //    Wiederanlauf nach dem Signal ist eine Störung der Firmware
+  const n1 = kalWorld(); presses(n1, 5, 10, 1.5);
+  runUntil(n1, () => n1.relay.some(x => x.src === 'loopback' && !x.on), 3 * M); n1.runFor(300); n1.press(); n1.runFor(2 * M);
+  const fs0 = { fo: 1, fu: Math.floor(T(2027, 5, 14, 10, 5) / 1000), ft: 'Pumpe zieht keinen Strom (0 W)' };
+  const n2 = kalWorld({ Pn: 250, noise: 5, s: fs0 }); presses(n2, 5, 10, 1.5); n2.runFor(2 * M);
+  const n3 = kalWorld({ s: fs0 }); presses(n3, 5, 10, 1.5); kalTap(n3, 8); n3.runFor(3 * M);
+  const n4 = kalWorld(); presses(n4, 5, 10, 1.5);
+  runUntil(n4, () => n4.relay.some(x => x.src === 'loopback' && !x.on), 3 * M); n4.pump.mode = 'anlauf'; n4.runFor(3 * M);
+  check('S63n Druck in der Signalpause: abgebrochen, nichts übernommen', n1.state().pn === 0 && !n1.dev.output &&
+    logHas(n1, /Anlernen abgebrochen: Taster gedrückt – nichts übernommen/), kalLog(n1));
+  check('S63n abgebrochenes Anlernen lässt die offene Störung stehen, gelungenes hebt sie auf', n2.state().fo === 1 && n3.state().fo === 0 &&
+    n3.state().pc > 0, 'n2 fo=' + n2.state().fo + ' n3 fo=' + n3.state().fo);
+  check('S63n Überstrom beim Wiederanlauf nach dem Signal: Störung der Firmware, im Protokoll', n4.state().pn === 0 && n4.state().fo === 1 &&
+    /fw:overcurrent/.test(n4.storage.f || '') && /ka:Relais blieb aus/.test(n4.storage.f || ''), (n4.storage.f || '') + ' · ' + kalLog(n4));
+  const tests = [b, c, c2, d, e, e2, e3, f, g1, g2, g3, h, h2, k, k2, j, l, m, m2, n1, n2, n3, n4];
+  tests.forEach((x, n) => common(x, 'S63-' + n));
+  // k) Abbruch nach 5 min auch durchs Skript (nur Quelltext: braucht den Namen R)
+  if (!/min\.js$/.test(FILE)) {
+    const z = kalWorld(); presses(z, 5, 10, 1.5); z.runFor(40e3); z.eval('R.run.t0 -= 290'); z.runFor(5e3);
+    check('S63k Skript bricht nach KAL_S - 5 s ab (Zeit um)', logHas(z, /Anlernen abgebrochen: Zeit um/) && !z.dev.output && z.state().pn === 0, kalLog(z));
+    common(z, 'S63k');
+  }
+  return { a: kalLog(w).slice(0, 400), speicher: JSON.stringify(w.maxStore) };
+};
+
+// ------------------------------------------------------------------
+scenarios.S64_speicher_gross = function () {
+  // größter gespeicherter Zustand: lange Texte mit Umlauten, 14 geschätzte Tage, alle Zahlen lang, Störungsprotokoll voll.
+  // Espruino schreibt jedes Byte ab 0x80 als \u00XX: der Emulator zählt so, Grenze 1024 Byte je Eintrag
+  const w = learnedWorld(T(2027, 6, 1, 6, 30));
+  const xe = [], xw = []; for (let i = 0; i < 14; i++) { xe.push(12.3); xw.push(14.5); }
+  w.storage.s = JSON.stringify(Object.assign(JSON.parse(w.storage.s), { dp: dayNo(T(2027, 5, 31, 12)), d: 24.99, pi: 14.99, pn: 1899, pc: 1199,
+    kt: 1811833322, pu: 0, rt: 0, rm: 12.3, lr: devStr('31.05. 10:00 Automatik 12,3 mm – abgebrochen'), xa: dayNo(T(2027, 5, 17, 12)), xe, xw,
+    xd: 24.9, ob: 14.25, oa: 13.75, rd: 20970, rx: 12.3, rc: 20970, rk: 3, rf: -12.3, cs: 1811923202, fu: 1811838009,
+    ft: devStr('Überlast (2100 W > 1716 W) – überlänge überlänge überlänge').slice(0, 60), fo: 1, s0: 20970, sa: 999, sh: 999, sm: 9999.9,
+    sf: 999, io: 1811838009, id: 99999, os: 0 }));
+  w.powerFail(1000); w.run(T(2027, 6, 1, 9, 59));
+  for (let i = 0; i < 6; i++) { w.pump.mode = 'blocked'; w.press(); w.runFor(30e3); w.pump.mode = 'normal'; w.runFor(3 * M); }
+  w.runFor(5 * M);
+  const f = JSON.parse(w.storage.f || '[]');
+  check('S64 größter Zustand und volles Störungsprotokoll: je Eintrag <= 1024 Byte, auch so geschrieben', f.length === 5 &&
+    w.maxStore.s <= 1024 && w.maxStore.f <= 1024 && !/Speicher fehlt/.test(w.vcText()), JSON.stringify(w.maxStore) + ' · ' + f.length);
+  common(w, 'S64');
+  return { speicher: JSON.stringify(w.maxStore) };
 };
 
 // ------------------------------------------------------------------

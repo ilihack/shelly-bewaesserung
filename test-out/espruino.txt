@@ -1,48 +1,61 @@
-[BW] gestartet, Bodenkonto 14 mm, Normalleistung 1320
+[BW] gestartet, Bodenkonto 14 mm, Pumpe angelernt 1320 W
 [BW] Wächter angelegt: Zeitplan startet das Skript alle 5 min, falls es steht
 [BW] Firmware-Update angelegt: täglich 03:23 die neueste stabile
 [BW] Ort Ludwigshafen am Rhein: 49.48, 8.45
-[BW] Tagesprüfung: Defizit 14 mm -> gegossen 14 mm
-[BW] Pumpe an (auto), Ziel 14 mm in 98 min
+[BW] Pumpe an (hand), Ziel 14 mm in 98 min
+[BW] Pumpe aus: Ende/Stopp, 0 mm gegeben
+[BW] Pumpe an (hand), Ziel 14 mm in 98 min
+[BW] Pumpe aus: Ende/Stopp, 0 mm gegeben
+[BW] Pumpe an (hand), Ziel 14 mm in 98 min
+[BW] Anlernen: Hahn offen lassen, Normalleistung wird gemessen
+[BW] Anlernen: Normalleistung 1320 W – Signal, jetzt Hahn zudrehen
+## Status-Abo beendet 09:01 T20970
+## Hahn zu 09:01 T20970
+[BW] Angelernt: 1320 W, Hahn zu 818 W, Untergrenze 1069 W
+[BW] Pumpe aus: angelernt, 0.2 mm gegeben
+## Hahn auf 09:04 T20970
+[BW] Tagesprüfung: Defizit 13.8 mm -> gegossen 13,8 mm
+[BW] Pumpe an (auto), Ziel 13.8 mm in 96 min
 ## Brunnen leer 10:20 T20970
-[BW] Schutz: unterlast (585 W < 990 W)
+[BW] Schutz: unterlast (585 W < 1069 W)
 [BW] Pumpe aus: unterlast, 2.8 mm gegeben
 ## Brunnen wieder voll 11:10 T20970
-[BW] Pumpe an (retry), Ziel 11.2 mm in 78 min
-[BW] Pumpe aus: Ende/Stopp, 11.2 mm gegeben
+[BW] Pumpe an (retry), Ziel 11 mm in 77 min
+[BW] Pumpe aus: Ende/Stopp, 11 mm gegeben
 ## Taster 18:00 T20970
 [BW] Pumpe an (hand), Ziel 6 mm in 42 min
 [BW] Pumpe aus: Ende/Stopp, 6 mm gegeben
 [BW] Tagesprüfung: Defizit 3.4 mm -> nicht nötig (3,4 mm)
-## Relais: AN 10:00 T20970 skript | AUS 10:20 T20970 skript | AN 11:20 T20970 skript | AUS 12:38 T20970 timer | AN 18:00 T20970 taster | AUS 18:41 T20970 timer
-## Zustand: {"v":1,"t":1811923202,"d":3.4,"dp":20970,"pi":0,"ev":20971,"pn":1320,"ln":5,"pu":0,"fd":20970,"fc":1,"rt":0,"rm":11.2,"lr":"01.06. 18:00 Hand 6 mm","xa":-1,"xe":[],"xw":[],"xd":0,"ob":-99,"oa":-99,"df":0,"rd":-1,"rx":0,"rc":-1,"rk":0,"rf":0,"tu":90002,"ce":0,"cs":0,"fu":1811838009,"ft":"Trockenlauf oder Hahn zu (585 W < 990 W)","fo":0,"s0":20970,"sa":2,"sh":1,"sm":20,"sf":1,"io":0,"id":0,"os":0,"wu":90002,"wn":1,"wb":90002,"la":49.48,"lo":8.45,"pz":"DELudwigshafen am Rhein"}
-## Status: Heute: nicht nötig (3,4 mm) · Zuletzt 01.06. 18:00 Hand 6 mm · Pumpe normal 1320 W
+## Relais: AN 09:00 T20970 taster | AUS 09:00 T20970 taster | AN 09:00 T20970 taster | AUS 09:00 T20970 taster | AN 09:00 T20970 taster | AUS 09:01 T20970 skript | AN 09:01 T20970 skript | AUS 09:02 T20970 skript | AN 10:00 T20970 skript | AUS 10:20 T20970 skript | AN 11:20 T20970 skript | AUS 12:37 T20970 timer | AN 18:00 T20970 taster | AUS 18:41 T20970 timer
+## Zustand: {"v":1,"t":1811923202,"d":3.4,"dp":20970,"pi":0,"ev":20971,"pn":1320,"ln":3,"pu":0,"fd":20970,"fc":1,"rt":0,"rm":11,"lr":"01.06. 18:00 Hand 6 mm","pc":818,"kt":1811833322,"xa":-1,"xe":[],"xw":[],"xd":0,"ob":-99,"oa":-99,"df":0,"rd":-1,"rx":0,"rc":-1,"rk":0,"rf":0,"tu":90002,"ce":0,"cs":0,"fu":1811838009,"ft":"Trockenlauf oder Hahn zu (585 W < 1069 W)","fo":0,"s0":20970,"sa":2,"sh":1,"sm":19.8,"sf":1,"io":0,"id":0,"os":0,"wu":90002,"wn":1,"wb":90002,"la":49.48,"lo":8.45,"pz":"DELudwigshafen am Rhein"}
+## Status: Heute: nicht nötig (3,4 mm) · Zuletzt 01.06. 18:00 Hand 6 mm · Pumpe angelernt 1320 W
 ## Zeitplaene: [{"enable":true,"timespec":"0 */5 * * * *","calls":[{"method":"Script.Start","params":{"id":1}}],"id":1},{"enable":true,"timespec":"0 23 3 * * *","calls":[{"method":"Shelly.Update","params":{"stage":"stable"}}],"id":2}] | LED: {"leds":{"mode":"switch","colors":{"switch:0":{"on":{"rgb":[0,0,100],"brightness":100},"off":{"rgb":[0,100,0],"brightness":100}}}}}
-## Diagnose (200, 1252 Zeichen; Speicher davor 5025, mit Seite 5132 Bloecke)
+## Diagnose (200, 1245 Zeichen; Speicher davor 5456, mit Seite 5563 Bloecke)
 ## | Bewässerung 02.06.2027 11:00
 ## | 
-## | Status: Heute: nicht nötig (3,4 mm) · Zuletzt 01.06. 18:00 Hand 6 mm · Pumpe normal 1320 W
+## | Status: Heute: nicht nötig (3,4 mm) · Zuletzt 01.06. 18:00 Hand 6 mm · Pumpe angelernt 1320 W
 ## | LED: grün – alles in Ordnung
-## | Letzte Störung: 01.06.2027 10:20 Trockenlauf oder Hahn zu (585 W < 990 W) (erledigt)
+## | Letzte Störung: 01.06.2027 10:20 Trockenlauf oder Hahn zu (585 W < 1069 W) (erledigt)
 ## | Letzter Lauf: 01.06. 18:00 Hand 6 mm
-## | Saison seit 01.06.: Automatik 2, Hand 1, zusammen 20 mm, Störungen 1
-## | Bodenkonto 3,4 mm, Normalleistung 1320 W, Eigenwärme Fühler Nacht/Tag - / - K
+## | Saison seit 01.06.: Automatik 2, Hand 1, zusammen 19,8 mm, Störungen 1
+## | Pumpe: angelernt 01.06.2027 09:02, normal 1320 W, Hahn zu 818 W; Untergrenze 1069 W, Obergrenze 1716 W
+## | Bodenkonto 3,4 mm, Eigenwärme Fühler Nacht/Tag - / - K
 ## | Uhr: Zeitserver
 ## | Internet: ok
 ## | Ort: Ludwigshafen am Rhein 49.48, 8.45
 ## | Gerät: Firmware 1.7.1, an seit 01.06.2027 09:00 (26 h), davor zuletzt gespeichert 01.06.2027 09:00; Skript läuft seit 26 h
-## | Flash-Schreibvorgänge seit Skriptstart: Speicher 11, Einstellungen 11, LED 3
+## | Flash-Schreibvorgänge seit Skriptstart: Speicher 15, Einstellungen 11, LED 3
 ## | 
-## | Letzte Meldungen:
+## | Störungen (gespeichert, neueste zuerst):
+## | 01.06.2027 10:20 Trockenlauf oder Hahn zu (585 W < 1069 W)
+## | 
+## | Letzte Meldungen (seit Skriptstart):
 ## | 02.06. 10:00 Tagesprüfung: Defizit 3.4 mm -> nicht nötig (3,4 mm)
 ## | 01.06. 18:41 Pumpe aus: Ende/Stopp, 6 mm gegeben
 ## | 01.06. 18:00 Pumpe an (hand), Ziel 6 mm in 42 min
-## | 01.06. 12:38 Pumpe aus: Ende/Stopp, 11.2 mm gegeben
-## | 01.06. 11:20 Pumpe an (retry), Ziel 11.2 mm in 78 min
+## | 01.06. 12:37 Pumpe aus: Ende/Stopp, 11 mm gegeben
+## | 01.06. 11:20 Pumpe an (retry), Ziel 11 mm in 77 min
 ## | 01.06. 10:20 Pumpe aus: unterlast, 2.8 mm gegeben
-## | 01.06. 10:20 Schutz: unterlast (585 W < 990 W)
-## | 01.06. 10:00 Pumpe an (auto), Ziel 14 mm in 98 min
-## | 01.06. 10:00 Tagesprüfung: Defizit 14 mm -> gegossen 14 mm
-## | 01.06. 09:00 Ort Ludwigshafen am Rhein: 49.48, 8.45
-## Zahlen: Schreibvorgaenge 11, LED 3, Konfig 14, Fehler 0, RPC max 3, Timer max 1, Speicher max 5228 von 8192 Bloecken
+## Zahlen: Schreibvorgaenge 15, LED 3, Konfig 14, Fehler 0, RPC max 3, Timer max 1, Speicher max 5832 von 8192 Bloecken
 ## ENDE
+exit 0

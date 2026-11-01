@@ -11,15 +11,15 @@ Ein Skript für den **Shelly Outdoor Plug S Gen3**: Der Stecker schaltet eine Br
   - Nach einer Frostnacht wartet es, bis die Luft 5 °C hat.
   - Haben Regen oder Frost die Gabe verhindert, schaut es um 11:05 und 12:05 nochmal nach. Nach 12:30 startet keine Automatik mehr.
 - **Schützt die Pumpe.** Es erkennt über die Leistung Trockenlauf, einen zugedrehten Hahn, Blockade, eine fehlende Last und ein klebendes Relais.
-  - Die Normalleistung lernt es beim ersten Lauf selbst.
+  - Die Leistung der Pumpe lernt es auf Knopfdruck: Hahn auf, einstecken, in der ersten Minute fünfmal drücken. Es misst die Normalleistung, gibt ein Signal (2 s aus), und wer dann den Hahn zudreht, gibt ihm auch die Leistung bei zugedrehtem Hahn. Bis dahin gelten Voreinstellungen; aus gewöhnlichen Läufen lernt es nichts.
   - Nach einer Störung beim Anlauf startet es nach 6 min einen zweiten Versuch, nach anderen Störungen nach 60 min.
   - Jeder Lauf, Hand wie Automatik, endet nach spätestens 120 min, auch wenn das Skript danach stehen bleibt: eine zweite Grenze, falls ein zugedrehter Hahn unerkannt bleibt. Drückt man, während das Skript steht, kürzt es den Lauf beim nächsten Start auf 120 min ab Beginn.
-  - Unabhängig vom Skript schaltet die Firmware das Relais nach 160 min ab.
+  - Unabhängig vom Skript schaltet die Firmware das Relais nach 130 min ab.
 - **Hält sich selbst in Gang.** Ein Zeitplan der Firmware startet ein stehendes Skript binnen 5 min neu. Ein zweiter installiert jede Nacht um 03:23 die neueste stabile Firmware, falls es eine gibt.
   - Wächter, Einschaltzustand und Notabschaltung stellt das Skript stündlich nach, falls sie in der App verstellt wurden. Das Firmware-Update legt es nur an, wenn es keines gibt: In der App abgeschaltet, bleibt es aus.
   - Ein Fehler beim Verarbeiten einer Antwort hält das Skript nicht an. Es verwirft das Halbverbuchte und versucht es später nochmal.
   - Fehlt ein Bedienelement, etwa in der App gelöscht, legt das Skript es binnen einer Minute neu an.
-  - Eine Schreibbremse schützt den Flash-Speicher, auch vor einem Programmfehler: Den Zustand schreibt es höchstens einmal je Minute und nach 48 Schreibvorgängen am Tag nur noch stündlich. Ein Skript-Neustart schreibt nichts, und die Bremse zählt über Neustarts weiter: Eine Absturzschleife, in der der Wächter das Skript alle 5 min neu startet, schreibt so nicht bei jedem Start. Einstellungen schreibt es nur, wenn sie abweichen: Bedienfeld und Zeitpläne höchstens 30-mal am Tag; die LED wechselt erst nach 30 min Bestand (auf Violett nach 2 min) und höchstens 12-mal am Tag; die Relais-Sicherungen stellt es immer zurück.
+  - Eine Schreibbremse schützt den Flash-Speicher, auch vor einem Programmfehler: Den Zustand schreibt es höchstens einmal je Minute und nach 48 Schreibvorgängen am Tag nur noch stündlich. Ein Skript-Neustart schreibt nichts, und die Bremse zählt über Neustarts weiter: Eine Absturzschleife, in der der Wächter das Skript alle 5 min neu startet, schreibt so nicht bei jedem Start. Einstellungen schreibt es nur, wenn sie abweichen: Bedienfeld und Zeitpläne höchstens 30-mal am Tag; die LED wechselt erst nach 30 min Bestand (auf Rot nach 2 min) und höchstens 12-mal am Tag; die Relais-Sicherungen stellt es immer zurück.
 - **Kommt ohne Internet aus.**
   - Es rechnet mit Monatsmitteln und der Temperatur seines eigenen Fühlers. Die Eigenwärme des Steckers lernt es selbst.
   - Ohne Internet gießt es lieber etwas mehr.
@@ -30,8 +30,8 @@ Ein Skript für den **Shelly Outdoor Plug S Gen3**: Der Stecker schaltet eine Br
   - Bleibt das Internet ganz weg, stellt es die Uhr nach der nächsten klaren Nacht am Tagesgang der Temperatur nach.
 - **Wird bedient** über den Taster am Stecker oder den Schalter in der App: einmal drücken ist eine Handgabe, nochmal drücken stoppt sie.
   - Dazu kommt ein Bedienfeld in der Shelly-App: Status, Wasserdefizit, Automatik, Pause, Regenrate, Pumpe neu einlernen.
-  - Die LED zeigt in voller Helligkeit: grün = alles gut, blau = Pumpe läuft, gelb = Daten fehlen (Wetterdienst, Uhr, Ort oder Speicher), violett = der letzte Lauf hatte eine Störung oder die Firmware hat das Einschalten abgelehnt. Violett bleibt, bis ein Lauf wieder eine Minute fehlerfrei gepumpt hat, auch über Mitternacht und Neustarts; die Statuszeile nennt die Störung mit Datum. Rot gehört der Firmware (WLAN weg, Update), blaues Blinken dem Access Point.
-  - Eine **Diagnose-Seite** im Browser, `http://<IP>/script/<Skriptnummer>/info`, zeigt alles auf einen Blick: Status, Grund der LED-Farbe, letzte Störung (offen oder erledigt), Saisonzahlen (Läufe, Millimeter, Störungen), den letzten Ausfall des Wetterdienstes, Uhr, Ort, letzten Neustart, Flash-Schreibvorgänge und die letzten 10 Meldungen. Hat der Shelly ein Gerätepasswort, fragt der Browser danach (Benutzer `admin`). Die Seite entsteht erst beim Aufruf und schreibt nichts.
+  - Die LED leuchtet dauernd und in voller Helligkeit: grün = alles gut, blau = Pumpe läuft, gelb = Daten fehlen (Wetterdienst, Uhr, Ort oder Speicher), rot = der letzte Lauf hatte eine Störung oder die Firmware hat das Einschalten abgelehnt. Rot bleibt, bis ein Lauf wieder eine Minute fehlerfrei gepumpt hat, auch über Mitternacht und Neustarts; die Statuszeile nennt die Störung mit Datum. Blinken gehört der Firmware: rot bei WLAN-Problemen und Updates, blau im Access-Point-Modus.
+  - Eine **Diagnose-Seite** im Browser, `http://<IP>/script/<Skriptnummer>/info`, zeigt alles auf einen Blick: Status, Grund der LED-Farbe, letzte Störung (offen oder erledigt), Saisonzahlen (Läufe, Millimeter, Störungen), den letzten Ausfall des Wetterdienstes, Uhr, Ort, letzten Neustart, Flash-Schreibvorgänge, die angelernten Pumpenwerte mit beiden Grenzen, die letzten 5 Störungen (gespeichert, auch nach einem Stromausfall zu sehen, ebenso abgebrochenes Anlernen) und die letzten 6 Meldungen seit dem Skriptstart. Hat der Shelly ein Gerätepasswort, fragt der Browser danach (Benutzer `admin`). Die Seite entsteht erst beim Aufruf und schreibt nichts.
 
 ## Was du brauchst
 
@@ -67,14 +67,13 @@ I ist der Nennstrom laut Typenschild. Die Formeln rechnen mit dem Strom, weil di
 
 | Wert | Formel | IBO SDM 5/14, 7,9 A |
 | --- | --- | ---: |
-| `P_LEARN_MIN`, `P_LEARN_MAX` | 115·I und 240·I (W) | 900 / 1900 W |
+| `P_LEARN_MIN`, `P_LEARN_MAX` | 300 W (kleinste Tauchpumpen ziehen um 400 W) und 240·I (W) | 300 / 1900 W |
 | `P_ABS_DRY` | 78·I (W) | 600 W |
 | `P_ABS_OVER` | 265·I (W) | 2100 W |
 | `I_MAX` | 1,33·I, höchstens 11 A | 10,5 A |
 | `BLANK_S` | Tauchpumpe 40 s; Oberflächen- und Jetpumpe: Ansaugzeit + 20 s | 40 s |
 
-- `P_ABS_*` gelten nur bis zum Einlernen. Danach rechnet das Skript relativ zur gelernten Normalleistung (`UNDER_REL`, `OVER_REL`).
-- Beim Hahn-zu-Test die Leistung ablesen: `UNDER_REL` = (P_HahnZu / P_normal + 1) / 2.
+- `P_ABS_*` gelten nur, bis die Pumpe angelernt ist. Danach liegt die Obergrenze bei `OVER_REL` (130 %) der Normalleistung, die Untergrenze in der Mitte zwischen Normal- und Hahn-zu-Leistung. Zieht die Pumpe bei zugedrehtem Hahn weniger als `GAP_MIN` (20 %) weniger, wäre der Hahn nicht sicher zu erkennen: Dann gilt `UNDER_REL` (75 %), und das Anlernen meldet es.
 - **Oberflächen- und Jetpumpen** gehen mit denselben Formeln. Ohne Fußventil läuft die Saugleitung leer, und die Pumpe saugt bei jedem Start neu an, bei langer Leitung bis zu 5 min. So lang muss `BLANK_S` sein, sonst hält das Skript das Ansaugen für Trockenlauf.
 - **Hauswasserwerke mit Druckschalter** passen nicht: Der Schalter hält die Pumpe zeitweise an, etwa beim Start, solange der Kessel noch Druck hat; das Skript meldet dann „Pumpe zieht keinen Strom“.
 
@@ -82,7 +81,7 @@ I ist der Nennstrom laut Typenschild. Die Formeln rechnen mit dem Strom, weil di
 
 ```sh
 npm install
-npm run build                    # build/bewaesserung.min.js (gekürzt, nur ASCII, Sprachmittel, Stapel und Methoden geprüft) und build/deploy-browser.js
+npm run build                    # build/bewaesserung.min.js (gekürzt, Einstellwerte eingesetzt, nur ASCII, Sprachmittel, Stapel und Methoden geprüft) und build/deploy-browser.js
 node tools/deploy.js <IP-des-Shelly> [--passwort <Gerätepasswort>] [--neues-passwort <neues Passwort>]
 ```
 
@@ -110,13 +109,13 @@ Danach prüft es:
 
 Erst wenn alles stimmt, meldet es „FERTIG“.
 
-**Nicht von Hand einfügen:** Der Skript-Editor der Weboberfläche schneidet beim Einfügen nach 20 000 Zeichen ab, die Gerätefassung hat rund 31 000. Das Skript endet dann mitten im Code, und der Shelly meldet „Syntax ungültig“. Ohne Node daher den Browserweg oben nehmen: Er lädt in Stücken hoch.
+**Nicht von Hand einfügen:** Der Skript-Editor der Weboberfläche schneidet beim Einfügen nach 20 000 Zeichen ab, die Gerätefassung hat rund 35 000. Das Skript endet dann mitten im Code, und der Shelly meldet „Syntax ungültig“. Ohne Node daher den Browserweg oben nehmen: Er lädt in Stücken hoch.
 
 Bedienfeld, Relais-Einstellungen, Wächter, LED und Firmware-Update richtet das Skript selbst ein. Den Access Point und das Passwort (Weboberfläche: *Settings → Device settings → Authentication*) stellst du selbst ein.
 
 Danach mit Pumpe:
-1. **Normalleistung einlernen:** Hahn auf, Taster drücken, nach 2 min wieder drücken.
-2. **Hahn-zu-Test:** Während eines Laufs den Hahn zudrehen. Die Pumpe muss binnen etwa 15 s abschalten.
+1. **Pumpe anlernen:** Hahn auf, Stecker einstecken, gut 10 s warten, dann in der ersten Minute fünfmal kurz drücken, etwa einmal je Sekunde (an, aus, an, aus, an; binnen 20 s). Die Pumpe läuft 1 min, dann geht sie 2 s aus und wieder an: jetzt den Hahn zudrehen. Gut 20 s danach schaltet sie ab, die Werte stehen auf der Diagnose-Seite. Kommt nach gut 1 min kein Signal, wurden die Drücke nicht erkannt und es läuft eine gewöhnliche Handgabe: nochmal drücken, neu einstecken. Ein weiterer Druck bricht ab, auch in der Signalpause, ebenso Ausstecken; dann bleibt alles, wie es war. Unter 600 W übernimmt es die Werte nur mit Zudrehen, denn so wenig zieht auch eine trockenlaufende Pumpe.
+2. **Hahn-zu-Test:** Hahn wieder auf, Taster drücken, den Hahn während des Laufs zudrehen. Nach den ersten 40 s muss die Pumpe binnen etwa 10 s abschalten.
 3. **Becher-Test** für die Regenrate.
 
 In der Shelly-App keine eigenen Zeitpläne zum Schalten des Steckers anlegen. Die zwei Zeitpläne des Skripts (Wächter, Firmware-Update) stehen in der Liste der Zeitpläne. Den Wächter legt das Skript selbst wieder an. Das Firmware-Update abschalten, nicht löschen: Gelöscht legt das Skript es neu an.
@@ -134,9 +133,9 @@ Bedient wird das Skript nur über das Gerät und die Shelly-App. Seine einzige e
 
 | Befehl | prüft |
 | --- | --- |
-| `npm run build` | Gerätefassung: nur ASCII, nur ES5, Stapel (nächste Zeile) und eingebaute Methoden. Der Shelly hat ein abgespecktes Espruino; eine fehlende Methode wie `Array.shift` hält das Skript erst beim Aufruf an. Der Bau lässt nur Methoden durch, die am Gerät nachgewiesen sind (Liste in `tools/build.js`). |
+| `npm run build` | Gerätefassung: Zahlen aus Block `C` an ihren Stellen eingesetzt (am Shelly kostet jede Eigenschaft eines Objekts Arbeitsspeicher, so rund 0,85 KB weniger; der Bau prüft, dass `C` nur gelesen wird), nur ASCII, nur ES5, Stapel (nächste Zeile) und eingebaute Methoden. Der Shelly hat ein abgespecktes Espruino; eine fehlende Methode wie `Array.shift` hält das Skript erst beim Aufruf an. Der Bau lässt nur Methoden durch, die am Gerät nachgewiesen sind (Liste in `tools/build.js`). |
 | `node tools/stapel.js [--alle]`, `node emu/stapel-test.js` | Stapelspeicher: Der Shelly hat nur Platz für etwa 15 einfache Aufrufe ineinander, Schleifen und Blöcke kosten mehr. Läuft er über, endet das Skript, mitunter startet der ganze Shelly neu und schaltet den Autostart des Skripts ab. `stapel.js` rechnet für jeden Einstieg (Takt, Rückrufe, Start) den teuersten Weg nach den Kosten, die am Gerät gemessen sind, und verlangt höchstens 70 %; `npm run build` bricht sonst ab. `stapel-test.js` prüft das Modell an den 33 Messungen. |
-| `node emu/scenarios.js [skript]` | 62 Szenarien im Emulator, für Quelltext und Gerätefassung. Der Emulator bildet Relais, Leistung, Firmware-Schutz, Uhr mit Zeitserver, Stromausfall, Speicher, Bedienfeld, Wetterdienst, Ortssuche, Diagnose-Seite und Gerätetemperatur nach und wacht über die Grenzen der Firmware. Die Datumsprüfung der TLS-Zertifikate bildet er nicht nach. |
+| `node emu/scenarios.js [skript]` | 64 Szenarien im Emulator, für Quelltext und Gerätefassung. Der Emulator bildet Relais, Leistung, Firmware-Schutz, Uhr mit Zeitserver, Stromausfall, Speicher, Bedienfeld, Wetterdienst, Ortssuche, Diagnose-Seite und Gerätetemperatur nach und wacht über die Grenzen der Firmware. Die Datumsprüfung der TLS-Zertifikate bildet er nicht nach. |
 | `node emu/zufall.js [skript] [läufe] [tage]` | Zufallstest: wochenlang Stromausfälle, Internet- und Zeitserverausfälle, kaputte Wetterantworten, Pumpenstörungen beim Anlauf und mitten im Lauf, Tastendrücke und Neustarts; prüft Regeln, die immer gelten müssen, etwa jeder Lauf höchstens 120 min und höchstens 12 LED-Wechsel in 24 h |
 | `sh tools/espruino-run.sh build/bewaesserung.min.js [espruino]` | ein Tag im echten Espruino-Interpreter, auf dem die Shelly-Skriptsprache beruht ([Espruino](https://github.com/espruino/Espruino) für Linux bauen, Pfad als zweites Argument) |
 | `node emu/deploy-test.js`, `emu/browser-deploy-test.js` | Aufspielwerkzeug gegen einen nachgebauten Shelly mit Firmware-Update, https, Passwort und Wächter, per Node und im Browser (braucht Playwright: `npm install --no-save playwright && npx playwright install chromium`) |
@@ -162,9 +161,9 @@ Das Skript gießt 97 % der Menge eines idealen Bodensensors; seine zwei Stressta
 
 ## Grenzen
 
-- **Was noch am echten Gerät zu prüfen ist:** wie viel Leistung die Pumpe bei zugedrehtem Hahn zieht. Arbeitsspeicher, Diagnose-Seite, Neustart, Autostart und Wächter sind am Gerät geprüft (Outdoor Plug S Gen3, Firmware 2.0.3). Anmelden und Setzen des Gerätepassworts folgen der Shelly-Doku, gelaufen sind sie bisher nur gegen den Nachbau.
-- **Der Arbeitsspeicher ist knapp:** Von 25 186 Byte belegt das Skript rund 15 500. Mit voller Meldungsliste, offener Störung und der größten Wetterantwort (15 Tage) bleiben 1,9 KB frei. Reicht er einmal nicht, hält das Skript an, und der Wächter startet es binnen 5 min neu.
-- **Steht das Skript dauerhaft,** etwa weil ein Firmware-Update es nicht mehr starten lässt, bleibt die LED auf ihrer letzten Farbe. Die Pumpe schützt dann nur noch die Firmware: Einschaltzustand aus, Notabschaltung nach 160 min. Ob das Skript läuft, zeigt die Weboberfläche unter *Scripts*.
+- **Was noch am echten Gerät zu prüfen ist:** wie viel Leistung die Pumpe bei zugedrehtem Hahn zieht (zeigt das Anlernen), und ob die Firmware die fünf Drücke in der ersten Minute ohne eigene Reaktion durchlässt; Shelly dokumentiert für diesen Stecker nur langes Halten (5 s Access Point, 10 s Werksreset). Arbeitsspeicher, Diagnose-Seite, Neustart, Autostart und Wächter sind am Gerät geprüft (Outdoor Plug S Gen3, Firmware 2.0.3). Anmelden und Setzen des Gerätepassworts folgen der Shelly-Doku, gelaufen sind sie bisher nur gegen den Nachbau.
+- **Der Arbeitsspeicher ist knapp:** Von 25 186 Byte belegt das Skript rund 15 800. Im ungünstigsten Fall, mit voller Meldungsliste, fünf gespeicherten Störungen, der größten Wetterantwort (15 Tage) und der Diagnose-Seite, bleiben 1,8 KB frei. Reicht er einmal nicht, hält das Skript an, und der Wächter startet es binnen 5 min neu.
+- **Steht das Skript dauerhaft,** etwa weil ein Firmware-Update es nicht mehr starten lässt, bleibt die LED auf ihrer letzten Farbe. Die Pumpe schützt dann nur noch die Firmware: Einschaltzustand aus, Notabschaltung nach 130 min. Ob das Skript läuft, zeigt die Weboberfläche unter *Scripts*.
 - **Die Nachprüfung um 11:05 und 12:05 sieht im Sommer meist dieselbe Prognose wie um 10:00.** Das Wettermodell ICON-D2 des DWD rechnet alle 3 h; der Lauf von 11:00 Sommerzeit ist erst gegen 12:35 abrufbar. Die Nachprüfung hilft bei Frost, bei verspäteten Läufen und im Winterhalbjahr.
 - **Die Uhrzeit kommt nur vom Zeitserver.** Ist er gesperrt (UDP 123), bleibt die Uhr geschätzt wie ohne Internet und gießt nie zu früh. Einen zweiten Weg gibt es mit Absicht nicht: Firmware ab 2.0 prüft das Datum von TLS-Zertifikaten, ohne richtige Uhr klappt also auch kein HTTPS.
 - **Ein falscher, aber vorhandener Ortsname fällt nicht auf.** Die Ortssuche nimmt den ersten Treffer, auch einen gleichnamigen Ort. Die Koordinaten stehen auf der Diagnose-Seite und im Protokoll des Aufspielwerkzeugs; einmal ansehen genügt.

@@ -14,7 +14,7 @@
   ok  Lauf 14 (Start Monat 4, 18 Läufe, davon 11 automatisch)
   ok  Lauf 15 (Start Monat 11, 11 Läufe, davon 9 automatisch)
   ok  Lauf 16 (Start Monat 8, 20 Läufe, davon 11 automatisch)
-Abschaltgründe: Ende/Stopp 170, fw 8, keinStrom 10, ueberlast 12, unterlast 27
+Abschaltgründe: Ende/Stopp 172, fw 8, keinStrom 10, ueberlast 11, unterlast 26
 Handgaben geprüft: 59, meiste LED-Wechsel in 24 h: 3
 
 16 von 16 Zufallsläufen ohne Regelverstoß [bewaesserung.min.js]

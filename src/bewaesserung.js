@@ -7,9 +7,10 @@
  *  - rechnet mit Wetterdaten von Open-Meteo; ohne Internet mit Monatsmitteln und der Temperatur des
  *    eigenen Fühlers, korrigiert mit echten Daten, sobald das Internet zurück ist [2]
  *  - Taster oder App einschalten = Handgabe, nochmal = Stopp [3]
- *  - schützt die Pumpe über die gemessene Leistung, relativ zur selbst gelernten Normalleistung [4]
+ *  - schützt die Pumpe über die gemessene Leistung: Voreinstellung, bis sie per Taster angelernt ist [4]
+ *  - Anlernen: einstecken, in der ersten Minute 5× drücken; misst Normal- und Hahn-zu-Leistung [4]
  *  - übersteht Stromausfälle: Zeitanker alle 6 h, Uhr am Tagesgang der Temperatur nachgestellt [5]
- *  - Bedienfeld in der Shelly-App: Status, Bodenkonto, Automatik, Pause, Regenrate, Neu einlernen [3]
+ *  - Bedienfeld in der Shelly-App: Status, Bodenkonto, Automatik, Pause, Regenrate, Pumpenwerte zurücksetzen [3]
  *  - Diagnose im Browser: http://<IP>/script/<id>/info, mit dem Gerätepasswort [3]
  *
  * Lesehilfe: Einstellungen C, Klima -> Zustand S (gespeichert) und R (nur RAM) -> Helfer, Zeit, Speicher ->
@@ -54,24 +55,26 @@ var C = {
   OFF_ET: 1.21,                  // ohne Internet lieber mehr: trockene Tage liegen 5 % zu tief, +5 % Reserve, darauf
                                  // nochmals +10 %: zu viel Wasser schadet nicht, zu wenig schon [2]
 
-  // Pumpe: an die eigene Pumpe anpassen. I = Nennstrom laut Typenschild (A); gerechnet wird mit dem Strom, weil die
-  // Watt-Angabe im Katalog oft die Leistung an der Welle ist. Tauchpumpe: P_LEARN_MIN 115·I, P_LEARN_MAX 240·I,
+  // Pumpe: Voreinstellung für die eigene Pumpe, bis sie angelernt ist. I = Nennstrom laut Typenschild (A); gerechnet
+  // wird mit dem Strom, weil die Watt-Angabe im Katalog oft die Leistung an der Welle ist. Tauchpumpe: P_LEARN_MAX 240·I,
   // P_ABS_DRY 78·I, P_ABS_OVER 265·I, I_MAX 1,33·I (höchstens 11 A; Pumpen über 9 A passen nicht an diesen Stecker).
   // Oberflächen-/Jetpumpe: dieselben Formeln, BLANK_S = Ansaugzeit + 20 s. Hauswasserwerk mit Druckschalter: ungeeignet.
-  // Nach dem ersten Lauf gilt die gelernte Normalleistung; Hahn-zu-Leistung messen, UNDER_REL = (P_HahnZu/P_normal + 1) / 2.
-  P_LEARN_MIN: 900, P_LEARN_MAX: 1900, // erste Normalleistung nur in diesem Bereich übernehmen (W)
-  P_ABS_DRY: 600,                // vor dem Einlernen: darunter Trockenlauf (W)
-  P_ABS_OVER: 2100,              // vor dem Einlernen: darüber Überlast (W)
+  // Das Anlernen per Taster ersetzt die Voreinstellung durch gemessene Werte (siehe Anlernen).
+  P_LEARN_MIN: 300, P_LEARN_MAX: 1900, // Anlernen übernimmt nur diese Normalleistung (W); kleinste Tauchpumpen ~400 W
+  P_ABS_DRY: 600,                // nicht angelernt: darunter Trockenlauf (W); so wenig übernimmt das Anlernen nur
+                                 // mit Hahn-zu-Messung, denn auch eine trockenlaufende Pumpe zieht so wenig
+  P_ABS_OVER: 2100,              // nicht angelernt: darüber Überlast (W)
   I_MAX: 10.5,                   // Strom darüber = blockiert (A); Stecker selbst: 12 A
   MAX_RUN_MIN: 120,              // längster Lauf, Hand wie Automatik; zweite Grenze, falls ein zugedrehter Hahn
                                  // unerkannt bleibt. Den Timer hält die Firmware, er wirkt auch ohne Skript
-  AUTO_OFF_S: 9600,              // Notabschaltung des Relais (160 min), wirkt auch ohne Skript
+  AUTO_OFF_S: 7800,              // Notabschaltung des Relais (130 min), wirkt auch ohne Skript
   MAX_STARTS_H: 10,              // Starts je Stunde: die Hälfte des Datenblattwerts (diese Pumpe verträgt 20)
 
   // Fachwerte: nur mit Grund ändern
   UNDER_REL: 0.75,               // darunter Unterlast (Trockenlauf / Hahn zu)
   OVER_REL: 1.30,                // darüber Überlast
-  LEARN_GATE: 0.30,              // Nachlernen nur bei Abweichung bis 30 %
+  GAP_MIN: 0.2,                  // Hahn zu muss beim Anlernen mindestens 20 % weniger ziehen, sonst nicht erkennbar
+  KAL_S: 300,                    // Anlernen dauert höchstens 5 min, dann aus (Timer der Firmware)
   NOLOAD_W: 50,                  // darunter zieht die Pumpe keinen Strom
   BLANK_S: 40,                   // Anlaufzeit ohne Über-/Unterlastprüfung
   UNDER_S: 8, OVER_S: 5, NOLOAD_S: 5, I_S: 2, // so viele Sekunden muss eine Abweichung anstehen
@@ -100,14 +103,14 @@ var ET0_CLIM = [0.6, 0.9, 1.6, 2.6, 3.5, 4.5, 4.4, 3.8, 2.4, 1.1, 0.5, 0.5];   /
 var TMAX_CLIM = [6.1, 9.3, 13.0, 17.0, 21.1, 26.3, 27.4, 27.4, 22.8, 16.7, 9.6, 6.8]; // Tageshöchstwert (°C)
 
 // LED des Steckers (Farben 0..100, volle Helligkeit, auch in der Sonne zu sehen): grün = alles gut, gelb = Daten
-// fehlen (Wetterdienst, Uhr, Ort, Speicher), violett = der letzte Lauf hatte eine Störung (bleibt, bis ein Lauf wieder
-// fehlerfrei war, auch über Neustarts), blau = Pumpe läuft. Rot belegt die Firmware (WLAN weg, Update), Blau blinkend den AP.
-// Jede Änderung ist ein Flash-Schreibvorgang: violett nach 2 min Bestand, jede andere Farbe erst nach 30 min,
-// höchstens 12 am Tag [3]
-var LED = { ok: [0, 100, 0], warn: [100, 70, 0], err: [100, 0, 100], run: [0, 0, 100] };
+// fehlen (Wetterdienst, Uhr, Ort, Speicher), rot = der letzte Lauf hatte eine Störung (bleibt, bis ein Lauf wieder
+// fehlerfrei war, auch über Neustarts), blau = Pumpe läuft. Die Firmware blinkt rot (WLAN, Update) und blau (AP),
+// das Skript leuchtet dauernd. Jede Änderung ist ein Flash-Schreibvorgang: rot nach 2 min Bestand, jede andere Farbe
+// erst nach 30 min, höchstens 12 am Tag [3]
+var LED = { ok: [0, 100, 0], warn: [100, 70, 0], err: [100, 0, 0], run: [0, 0, 100] };
 
 // ============================== Zustand ==============================
-// S wird gespeichert (Script.storage, ein Eintrag), R lebt nur im RAM.
+// S wird gespeichert (Script.storage "s"), ebenso das Störungsprotokoll R.fl ("f"); der Rest von R lebt nur im RAM.
 var S = null;
 var R = {
   k: 0,              // Takt-Zähler
@@ -135,7 +138,9 @@ var R = {
   h: null,           // Bedienfeld-Handles
   paShown: -1, lastTxt: "", lastD: -1,
   boot: true,
-  def: false, defAt: 0,  // Uhrzeit angenommen (15. April 10:00), weil nichts bekannt war
+  def: false, defAt: 0,  // Uhrzeit angenommen (1. April 10:00), weil nichts bekannt war
+  kh: -1, kc: 0, k0: 0, ko: false, kw: 0, // Anlern-Geste: Status-Abo (-1 = keines), Relaiswechsel, erster davon
+                     // (Uptime), Relais zuletzt, Anlernen gewünscht
   pbNext: 0,         // nächster Verbindungstest (Uptime), solange der Wetterdienst fehlte
   cfgAt: 0, sn: 0,   // nächstes Nachstellen von Relais-Einstellungen und Zeitplänen (Uptime); Schritt dabei
   cg: 0,             // Uhr-Generation: zählt jedes Stellen der Uhr; ein Wetterabruf von davor wird verworfen
@@ -148,6 +153,7 @@ var R = {
   st: "",            // Ergebnis des Selbsttests fürs Aufspielwerkzeug
   lg: [], li: 0, t0: 0, s0: 0, // Diagnose: letzte Meldungen als Ring und nächster Platz darin; zuletzt gespeicherte
                      // Uhrzeit vor dem Start; Skriptstart (Uptime);
+  fl: [], fn: false, // Störungsprotokoll (gespeichert unter "f"), noch zu schreiben
   nw: 0, nc: 0, nl: 0 // Flash-Schreibvorgänge seit dem Skriptstart: Speicher, Einstellungen, LED
 };
 
@@ -159,12 +165,12 @@ function r2(x) { return Math.round(x * 100) / 100; }
 function f1(x) { var v = Math.round(x * 10) / 10; return String(v).replace(".", ","); }   // Anzeige mit Dezimalkomma
 function lim(x, a, b) { return x < a ? a : (x > b ? b : x); }
 function p2(n) { return (n < 10 ? "0" : "") + n; }
-function log(t) {                         // Konsole und die letzten 10 Meldungen für die Diagnose (nur RAM). Uhrzeit roh
+function log(t) {                         // Konsole und die letzten 6 Meldungen für die Diagnose (nur RAM). Uhrzeit roh
   var k = R.u > 1e9 ? Math.floor(R.u) : 0;   // aus dem Takt (R.u, 10 Ziffern), dann ~ für geschätzt, dann der Text;
   t = String(t); print("[BW] " + t);      // lesbar erst in info(): log() wird überall gerufen und muss flach bleiben
   k = (k ? String(k) : "0000000000") + (R.est ? "~" : " ") + t.slice(0, 80);
-  if (R.lg.length < 10) R.lg.push(k); else R.lg[R.li] = k;   // Ring statt shift(): shift() fehlt dem Shelly
-  R.li = (R.li + 1) % 10;
+  if (R.lg.length < 6) R.lg.push(k); else R.lg[R.li] = k;   // Ring statt shift(): shift() fehlt dem Shelly
+  R.li = (R.li + 1) % 6;
 }
 function sw() { return Shelly.getComponentStatus("switch", 0) || {}; }   // im Takt; sonst R.sw, der Stand dieses Takts
 function swKeep(st) {                     // das Nötige davon in R.sw, ohne neues Objekt
@@ -242,8 +248,9 @@ function load() {
   if (typeof v.dp !== "number") v.dp = -1;  // letzter verbuchter Tag
   if (typeof v.pi !== "number" || !(v.pi >= 0)) v.pi = 0;   // seither gegossen (mm)
   if (typeof v.ev !== "number") v.ev = -1;  // Tag der letzten Tagesprüfung
-  if (typeof v.pn !== "number") v.pn = 0;   // gelernte Normalleistung (W), 0 = noch nicht
-  if (typeof v.ln !== "number") v.ln = 0;
+  if (typeof v.pn !== "number") v.pn = 0;   // angelernte Normalleistung (W), 0 = Voreinstellung
+  if (typeof v.pc !== "number") v.pc = 0;   // angelernte Leistung bei zugedrehtem Hahn (W), 0 = keine
+  if (typeof v.kt !== "number") v.kt = 0;   // angelernt am (Unixzeit, 1 = Zeit unbekannt)
   if (typeof v.pu !== "number") v.pu = 0;   // Pause bis einschließlich Tag
   if (typeof v.fd !== "number") v.fd = -1;  // Tag der Störungszählung
   if (typeof v.fc !== "number") v.fc = 0;   // Störungen an diesem Tag
@@ -256,7 +263,7 @@ function load() {
   if (typeof v.xd !== "number") v.xd = 0;   // Konto vor dem ersten geschätzten Tag: die Korrektur rechnet von hier neu
   if (typeof v.ob !== "number") v.ob = -99; // gelernte Eigenwärme beim Tiefstwert (K), -99 = noch nicht
   if (typeof v.oa !== "number") v.oa = -99; // gelernte Eigenwärme beim Höchstwert (K)
-  if (typeof v.df !== "number") v.df = 0;   // 1 = Uhrzeit beruht auf der Annahme 15. April 10:00
+  if (typeof v.df !== "number") v.df = 0;   // 1 = Uhrzeit beruht auf der Annahme 1. April 10:00
   if (typeof v.rd !== "number") v.rd = -1;  // Tag, an dem die Regenprognose die Gabe gekürzt hat
   if (typeof v.rx !== "number") v.rx = 0;   // dabei erwarteter Regen (mm)
   if (typeof v.rc !== "number") v.rc = -1;  // Tag, an dem Regen oder Frost die Gabe verhindert hat: stündlich nachsehen
@@ -267,7 +274,7 @@ function load() {
   if (typeof v.cs !== "number") v.cs = 0;   // zuletzt vom Skript gestellte Uhrzeit, vom Zeitserver zu unterscheiden
   if (typeof v.fu !== "number") v.fu = 0;   // letzte Störung (Unixzeit, 1 = Zeit unbekannt)
   if (typeof v.ft !== "string") v.ft = "";  // ihr Text
-  if (typeof v.fo !== "number") v.fo = v.fu ? 1 : 0;   // 1 = noch offen: LED violett, bis ein Lauf fehlerfrei war
+  if (typeof v.fo !== "number") v.fo = v.fu ? 1 : 0;   // 1 = noch offen: LED rot, bis ein Lauf fehlerfrei war
   if (typeof v.s0 !== "number") v.s0 = 0;   // Saison seit (Tag), für die Diagnose; dazu Läufe Automatik und Nachlauf,
   if (typeof v.sa !== "number") v.sa = 0;   // Handgaben, gegebene mm und Störungen
   if (typeof v.sh !== "number") v.sh = 0;
@@ -283,6 +290,8 @@ function load() {
     v.la = null; v.lo = null; v.pz = "";
   }
   S = v;
+  try { v = JSON.parse(Script.storage.getItem("f")); } catch (e2) { v = null; }   // Störungsprotokoll, eigener Eintrag:
+  R.fl = v && typeof v.length === "number" ? v : [];                              // S allein bleibt so unter 1024 Byte
 }
 function save() { R.sd = true; }          // geschrieben wird am Ende des Takts (flush), so bleibt der Stapel flach
 function flush() {                        // Schreibbremse: höchstens 1 je Minute, nach WRITES_DAY in 24 h 1 je Stunde;
@@ -294,8 +303,10 @@ function flush() {                        // Schreibbremse: höchstens 1 je Minu
   if (u) { S.t = Math.floor(u); S.tu = Math.floor(now); }
   S.d = r2(S.d); S.pi = r2(S.pi);
   S.wu = Math.floor(now); S.wn = R.wn + 1; S.wb = Math.floor(R.w24);   // gilt so auch nach einem Skript-Neustart
-  try { Script.storage.setItem("s", JSON.stringify(S)); R.noStore = false; R.sd = false; R.nw++; }
-  catch (e) { R.noStore = true; }
+  try {
+    Script.storage.setItem("s", JSON.stringify(S)); R.noStore = false; R.sd = false; R.nw++;
+    if (R.fn) { Script.storage.setItem("f", JSON.stringify(R.fl)); R.fn = false; R.nw++; }
+  } catch (e) { R.noStore = true; }
   R.sv = now; R.wn++;                     // auch ein Fehlversuch zählt: kein Dauerversuch
 }
 function cfgCall(m, p, f) {               // Bedienfeld und Zeitpläne schreiben (Flash): höchstens CFG_DAY in 24 h; false = gebremst
@@ -370,8 +381,8 @@ function vcBind() {
   R.h = h; panelRead();
   if (R.hn > 1) log("Bedienfeld verbunden");
 }
-function onRelearn(ev) {
-  try { S.pn = 0; S.ln = 0; save(); note("Pumpe wird beim nächsten Lauf neu eingelernt"); }
+function onRelearn(ev) {                 // Bedienfeld: angelernte Werte verwerfen, es gilt wieder die Voreinstellung
+  try { S.pn = 0; S.pc = 0; S.kt = 0; save(); note("Pumpe auf Voreinstellung; anlernen: einstecken, 5× drücken"); }
   catch (e) { log("Fehler Taster: " + e); }
 }
 function rate() { return R.ra > 0 ? R.ra : C.RATE_MM_H; }
@@ -531,7 +542,7 @@ function onSetResult(res, err, msg) {
   R.ps = null; log(t);
   if (p && p.k !== "hand") R.want = { k: p.k, mm: p.mm, exp: (u || 0) + 1800 };  // später nochmal, bis END_MIN
   if (S.ft !== t || !S.fo || !(u && S.fu > 1 && loc(S.fu).day === loc(u).day)) {   // wie eine Störung: Statuszeile,
-    S.fu = u ? Math.floor(u) : 1; S.ft = t; S.fo = 1; save();                       // LED violett; je Tag einmal gespeichert
+    S.fu = u ? Math.floor(u) : 1; S.ft = t; S.fo = 1; flAdd("ab", msg); save();    // LED rot; je Tag einmal gespeichert
   }
 }
 // Startet eine eigene Gabe. Rückgabe null = gestartet, sonst Grund.
@@ -579,7 +590,7 @@ function runBegin(st, gone) {            // gone: eigener Start, der nie als Lau
     if (S.rt) { S.rt = 0; save(); }       // und einen geplanten Nachlauf
   }
   R.starts.push(now);
-  R.run = { k: kind, t0: now, lt: now, u0: u || 0, sec: sec, mm: mm, ps: 0, cr: 0, ck: now, sp: 0, np: 0,
+  R.run = { k: kind, t0: now, lt: now, u0: u || 0, sec: sec, mm: mm, ps: 0, cr: 0, ck: now,
             pf: -1, u: 0, o: 0, n: 0, i: 0, why: "", det: "" };
   log("Pumpe an (" + kind + "), Ziel " + r1(mm) + " mm in " + r0(sec / 60) + " min");
 }
@@ -592,11 +603,11 @@ function trip(code, det) {
   log("Schutz: " + code + " (" + det + ")");
   relayOff(code);
 }
+function pLo() { return !S.pn ? C.P_ABS_DRY : (S.pc ? (S.pn + S.pc) / 2 : S.pn * C.UNDER_REL); }   // Untergrenze (W):
+function pHi() { return S.pn ? S.pn * C.OVER_REL : C.P_ABS_OVER; }   // angelernt Mitte zu Hahn zu, sonst 75 %; Obergrenze
 function monitor(st) {
   var r = R.run, now = upS(), el = now - r.t0, dt = lim(now - r.lt, 0, 5);
-  var P = st.apower || 0, I = st.current || 0;
-  var lo = S.pn ? S.pn * C.UNDER_REL : C.P_ABS_DRY;
-  var hi = S.pn ? S.pn * C.OVER_REL : C.P_ABS_OVER;
+  var P = st.apower || 0, I = st.current || 0, lo = pLo(), hi = pHi();
   r.lt = now;
   if (r.why) return;                      // Abschaltung läuft schon
   if (el > r.sec + 60) { relayOff("ende"); return; } // Firmware-Timer fehlte
@@ -610,37 +621,36 @@ function monitor(st) {
   r.u = (el >= C.BLANK_S && P >= C.NOLOAD_W && r.pf < lo) ? r.u + 1 : 0;
   if (r.u >= C.UNDER_S) { trip("unterlast", r0(r.pf) + " W < " + r0(lo) + " W"); return; }
   if (r.pf >= lo) r.ps += dt;
-  if (el >= 60 && el < 300) { r.sp += P; r.np++; }
   if (now - r.ck >= C.RUN_SAVE_S) { credit(r); save(); r.ck = now; }
-}
-function learn(P) {
-  if (!S.pn) {
-    if (P >= C.P_LEARN_MIN && P <= C.P_LEARN_MAX) {
-      S.pn = r0(P); S.ln = 1; note("Normalleistung eingelernt: " + S.pn + " W");
-    } else {
-      note("Leistung " + r0(P) + " W unplausibel – nicht eingelernt (Hahn zu?)");
-    }
-  } else if (Math.abs(P / S.pn - 1) <= C.LEARN_GATE) {
-    S.pn = r0(S.pn * 0.8 + P * 0.2); S.ln++;
-  }
 }
 var WHY = { unterlast: "Trockenlauf oder Hahn zu", ueberlast: "Überlast", blockiert: "Pumpe blockiert",
             keinStrom: "Pumpe zieht keinen Strom", start: "Pumpe lief nicht an" };   // Störungen; "ende", "aus" sind keine
+var KIND = { auto: "Automatik", retry: "Nachlauf", hand: "Hand", kal: "Anlernen" };
+var FLT = { fw: "Firmware-Schutz", ab: "Einschalten abgelehnt", rk: "Relais klebt", ka: "Anlernen abgebrochen" };
+function flAdd(k, d) {                    // Störungsprotokoll im Flash: die letzten 5, auch nach Stromausfall zu sehen
+  var u = nowU();                         // (Besuch vor Ort ohne Internet); Kürzel aus WHY oder FLT, Messwert dazu
+  R.fl = R.fl.slice(-4); R.fn = true; save();
+  R.fl.push((u ? String(Math.floor(u)) : "0000000000") + (R.est ? "~" : " ") + k + ":" + String(d || "").slice(0, 16));
+}
 function runEnd(st) {
   var r = R.run, now = upS(), u = nowU(), why = r.why, fw = st.errors && st.errors.length;
   R.run = null; R.lastStop = now;
   credit(r);
-  if ((!why || why === "start") && fw) why = "fw";
-  var fault = why === "fw" || !!WHY[why];
-  if (!fault && r.np >= 30) learn(r.sp / r.np);
-  var txt = fault ? (why === "fw" ? "Firmware-Schutz: " + st.errors.join(",") : WHY[why] + (r.det ? " (" + r.det + ")" : "")) : "";
-  if (fault) { S.fu = u ? Math.floor(u) : 1; S.ft = txt.slice(0, 60); S.fo = 1; }   // LED violett, bis ein Lauf
-  else if (r.ps >= 60) S.fo = 0;                                                  // eine Minute normal gepumpt hat
-  if (r.k === "hand") S.sh++; else S.sa++;                                        // Saison, für die Diagnose
+  if (fw && (!WHY[why] || why === "start")) why = "fw";   // die Firmware hat abgeschaltet, auch beim Anlernen
+  var fault = why === "fw" || !!WHY[why], fwe = fault && why === "fw" ? st.errors.join(",") : "";
+  var txt = fault ? (fwe ? "Firmware-Schutz: " + fwe : WHY[why] + (r.det ? " (" + r.det + ")" : "")) : "";
+  if (fault) { S.fu = u ? Math.floor(u) : 1; S.ft = txt.slice(0, 60); S.fo = 1; flAdd(why, fwe || r.det); }   // LED rot,
+  else if (r.ps >= 60 && (r.k !== "kal" || why === "angelernt")) S.fo = 0;      // bis ein Lauf 1 min normal gepumpt hat
+  if (r.k === "hand" || r.k === "kal") S.sh++; else S.sa++;                       // Saison, für die Diagnose
+  if (r.k === "kal" && r.kp) {            // Anlernen unterbrochen (Taster, Störung, Firmware): nichts übernommen
+    if (!fault) flAdd("ka", "ausgeschaltet");
+    R.sv = -1e9;
+    note("Anlernen abgebrochen: " + (txt || "ausgeschaltet") + " – nichts übernommen");
+  }
   S.sm = r1(S.sm + r.cr); if (fault) S.sf++;
   if (u) {
     var L = loc(u), L0 = loc(r.u0 || u);
-    S.lr = dmy(L0.day) + " " + hm(L0.min) + " " + (r.k === "hand" ? "Hand" : (r.k === "retry" ? "Nachlauf" : "Automatik")) +
+    S.lr = dmy(L0.day) + " " + hm(L0.min) + " " + KIND[r.k] +
       " " + f1(r.cr) + " mm" + (fault ? " – abgebrochen" : "");
     if (fault) {
       if (S.fd !== L.day) { S.fd = L.day; S.fc = 0; }
@@ -661,11 +671,102 @@ function weldCheck(st) {
   if (P > C.NOLOAD_W) {
     R.wc++;
     if (R.wc >= 5) {
-      if (!R.weld) log("Relais klebt? " + r0(P) + " W bei AUS");
+      if (!R.weld) { log("Relais klebt? " + r0(P) + " W bei AUS"); flAdd("rk", r0(P) + " W"); save(); }
       R.weld = true;
       if (R.wc % 30 === 5) Shelly.call("Switch.Set", { id: 0, on: false }, cbNone);
     }
   } else { R.wc = 0; R.weld = false; }
+}
+
+// ============================== Anlernen per Taster ==============================
+// Hahn offen, Stecker einstecken, gut 10 s warten, dann in der ersten Minute 5× drücken (ein, aus, ein, aus, ein). Nach
+// 60 s ist das Mittel der letzten 15 s die Normalleistung. Signal: 2 s aus, wieder an = jetzt Hahn zudrehen. Zieht die
+// Pumpe binnen 60 s 8 % weniger, gilt nach 10 s Beruhigung das Mittel der nächsten 10 s als Hahn-zu-Leistung. Liegt sie
+// mindestens GAP_MIN unter der Normalleistung, kommt die Untergrenze in die Mitte (zu beiden Seiten 10 % Abstand oder
+// mehr), sonst auf 75 %. Kein Nachführen. Übernommen wird nur am regulären Ende, auch ohne Zudrehen, unter P_ABS_DRY
+// aber nur mit Hahn-zu-Messung (sonst womöglich Trockenlauf gelernt); Taster, auch in der Signalpause, Störung,
+// Stromausfall oder unplausible Werte brechen ohne Übernahme ab. Höchstens KAL_S, den Timer hält die Firmware.
+// Während des Anlernens prüft das Skript nur auf fehlenden Strom und Blockade, nicht auf Unter- und Überlast [4]
+function onSt(ev) {                       // Status-Abo der ersten 90 s nach dem Einstecken: zählt Relaiswechsel
+  var d = ev ? ev.delta : null, now = upS();
+  if (!d || ev.component !== "switch:0" || typeof d.output !== "boolean" || d.output === R.ko) return;
+  R.ko = d.output;
+  if (!R.kc || now - R.k0 > 20) { R.kc = 0; R.k0 = now; }   // eine Folge: 5 Wechsel binnen 20 s
+  R.kc++;
+  R.kw = R.kc === 5 && d.output && R.k0 <= 60 ? 1 : 0;      // in der ersten Minute begonnen, der 5. Druck schaltet ein;
+}                                                           // ein 6. Druck hebt das auf
+function kalStart() {                     // die Handgabe der 5 Drücke wird zum Anlernen
+  var r = R.run;
+  R.kw = 0; r.k = "kal"; r.kp = 1; r.kt = upS(); r.ks = 0; r.kn = 0; r.kl = 1e9; r.kh = 0; r.kn0 = 0; r.sec = C.KAL_S;
+  Shelly.call("Switch.Set", { id: 0, on: true, toggle_after: C.KAL_S }, cbNone);
+  note("Anlernen: Hahn offen lassen, Normalleistung wird gemessen");
+}
+function kalSum(P) { var r = R.run; r.ks += P; r.kn++; if (P < r.kl) r.kl = P; if (P > r.kh) r.kh = P; }
+function kalTick(st) {                    // Schritte 1 (Normalleistung), 3 (warten auf Zudrehen), 4 (Hahn zu messen)
+  var r = R.run, now = upS(), el = now - r.kt, dt = lim(now - r.lt, 0, 5), P = st.apower || 0, I = st.current || 0, e = "";
+  r.lt = now;
+  if (r.why) return;
+  r.i = (el >= 2 && I > C.I_MAX) ? r.i + 1 : 0;           // el ab jedem Schritt: Anlaufstrom nach dem Signal
+  r.n = (el >= 3 && P < C.NOLOAD_W) ? r.n + 1 : 0;
+  if (r.i >= C.I_S) trip("blockiert", f1(I) + " A");
+  else if (r.n >= C.NOLOAD_S) trip("keinStrom", r0(P) + " W");
+  else if (now - r.t0 > C.KAL_S - 5) e = "Zeit um";
+  else if (r.kp === 1) {
+    r.ps += dt;
+    if (el >= 45) kalSum(P);
+    if (el >= 60) e = kalNormal();
+  } else if (r.kp === 3) {
+    r.kd = (el >= 5 && P < r.kn0 * 0.92) ? r.kd + 1 : 0;   // erst 5 s nach dem Wiedereinschalten
+    if (!r.kd) r.ps += dt;
+    if (r.kd >= 3) { r.kp = 4; r.kt = now; r.ks = 0; r.kn = 0; r.kl = 1e9; r.kh = 0; }
+    else if (el >= 60) e = kalEnd(0);
+  } else if (r.kp === 4) {
+    if (el >= 10) kalSum(P);
+    if (el >= 20) e = kalEnd(1);
+  }
+  if (e) kalStop(e, r.kx);                // hier statt in kalNormal und kalEnd: flacherer Stapel
+}
+function kalNormal() {                    // nach 60 s: Normalleistung prüfen, dann Signal (2 s aus); "" = gut, sonst Grund
+  var r = R.run, p = r.kn ? r.ks / r.kn : 0;   // (Gründe bis 16 Zeichen, so passen sie ins Störungsprotokoll)
+  if (p < C.P_LEARN_MIN) return r0(p) + " W zu wenig";
+  if (p > C.P_LEARN_MAX) return r0(p) + " W zu viel";
+  if (r.kh > r.kl * 1.15) return "unruhig " + r0(r.kl) + "-" + r0(r.kh) + " W, Luft im Rohr?";
+  r.kn0 = r0(p); r.kp = 2; r.kt = upS(); r.kon = 0; r.koff = 0;
+  Shelly.call("Switch.Set", { id: 0, on: false }, cbNone);
+  log("Anlernen: Normalleistung " + r.kn0 + " W – Signal, jetzt Hahn zudrehen");
+  return "";
+}
+function kalBlip(st) {                    // Schritt 2, Signal: 2 s aus, dann wieder an bis KAL_S ab Beginn
+  var r = R.run, now = upS(), left = r0(C.KAL_S - (now - r.t0));
+  if (!st.output) r.koff = 1;             // in der Pause gedrückt (an mit dem Timer der Notabschaltung): wie jeder Druck
+  if (st.output && !r.kon && (r.koff || st.timer_duration > C.KAL_S)) kalStop("Taster gedrückt");   // ein Abbruch
+  else if (!st.output && !r.kon && now - r.kt >= 2) {
+    r.kon = now;
+    Shelly.call("Switch.Set", { id: 0, on: true, toggle_after: left > 30 ? left : 30 }, cbNone);
+  } else if (st.output && (r.kon || now - r.kt > 10)) { r.kp = 3; r.kt = now; r.kd = 0; r.lt = now; }
+  else if (now - r.kt > 10) kalStop("Relais blieb aus");
+}
+function kalEnd(m) {                      // übernehmen und abschalten (m = Hahn zu gemessen); "" = übernommen, sonst
+  var r = R.run, u = nowU(), p = r.kn ? r.ks / r.kn : 0, g = 1 - p / r.kn0, t = "", lo;   // der Grund zum Abbrechen
+  if (!m) t = "Hahn nicht zugedreht";
+  else if (r.kh > r.kl * 1.1) t = "Hahn zu unruhig";
+  else if (g < C.GAP_MIN) t = "Hahn zu nur " + r0(g * 100) + " % weniger, nicht erkennbar";
+  if (t && r.kn0 < C.P_ABS_DRY) {         // so wenig zieht auch eine trockenlaufende Pumpe: kleine Werte nur mit
+    r.kx = "trocken? " + r.kn0 + " W";    // Hahn-zu-Messung, sonst lernte das Anlernen womöglich den Trockenlauf
+    return t + "; unter " + C.P_ABS_DRY + " W nur mit Zudrehen (Trockenlauf?)";
+  }
+  S.pn = r.kn0; S.pc = t ? 0 : r0(p); S.kt = u ? Math.floor(u) : 1; save(); R.sv = -1e9;   // gleich schreiben, nicht erst
+                                                                       // nach der Minute der Schreibbremse (Stecker gezogen?)
+  lo = r0(pLo());
+  t = (t ? t + ", " : "Hahn zu " + S.pc + " W, ") + "Untergrenze " + lo + " W";
+  r.kp = 0; note("Angelernt: " + S.pn + " W, " + t);
+  relayOff("angelernt");
+  return "";
+}
+function kalStop(why, d) {                // abbrechen, nichts übernehmen; ins Störungsprotokoll für den Besuch vor Ort
+  R.run.kp = 0; flAdd("ka", d || why); R.sv = -1e9;
+  note("Anlernen abgebrochen: " + why + " – nichts übernommen");
+  relayOff("abbruch");
 }
 
 // ============================== Wetter und Tagesentscheidung ==============================
@@ -839,13 +940,13 @@ function onSelfTest(res, err, msg) {
 }
 
 // ============================== Takt ==============================
-function defTime() {                      // ohne Anker und ohne Zeitserver: Einstecken gilt als 15. April, START_MIN [5]
-  var s = Shelly.getComponentStatus("sys"), t = dfc(2026, 4, 15) * 86400 + C.START_MIN * 60 - (C.UTC_H + 1) * 3600;
+function defTime() {                      // ohne Anker und ohne Zeitserver: Einstecken gilt als 1. April, START_MIN [5]
+  var s = Shelly.getComponentStatus("sys"), t = dfc(2026, 4, 1) * 86400 + C.START_MIN * 60 - (C.UTC_H + 1) * 3600;
   R.defAt = 0;
   if (s && typeof s.unixtime === "number" && s.unixtime > C.T_MIN) return;
   R.def = true; R.est = true; R.eb = t; R.eu = upS(); S.df = 1; S.ce = 1; S.cs = t;
   Shelly.call("Sys.SetTime", { unixtime: t }, cbNone);
-  log("Uhrzeit unbekannt – Einstecken gilt als 15. April " + hm(C.START_MIN));
+  log("Uhrzeit unbekannt – Einstecken gilt als 1. April " + hm(C.START_MIN));
   save();
 }
 function geo() {                          // Ortsname -> Koordinaten (Open-Meteo), einmal, dann gespeichert;
@@ -889,7 +990,7 @@ function setOff(v) {                      // Wetterdienst weg oder zurück; für
   }
   R.off = v; S.os = v ? Math.floor(R.oa) || 1 : 0;   // offener Ausfall: nach einem Neustart weiter gelb, Test läuft weiter
 }
-function shiftDays(k) {                   // die Annahme 15. April war falsch: Tagesmarken mitverschieben [5]
+function shiftDays(k) {                   // die Annahme 1. April war falsch: Tagesmarken mitverschieben [5]
   if (S.ev >= 0) S.ev += k;
   if (S.dp >= 0) S.dp += k;
   if (S.fd >= 0) S.fd += k;
@@ -904,6 +1005,8 @@ function shiftDays(k) {                   // die Annahme 15. April war falsch: T
   log("Echte Uhrzeit da: Tagesmarken um " + k + " Tage verschoben");
 }
 function schedule() {
+  var h = R.kh;                           // Anlern-Geste nur nach dem Einstecken; erst zurücksetzen, dann abmelden:
+  if (h >= 0 && upS() > 90) { R.kh = -1; R.kw = 0; Shelly.removeStatusHandler(h); }   // wirft das, nur einmal
   if (R.defAt && upS() >= R.defAt) defTime();
   if (upS() >= R.cfgAt) { R.cfgAt = upS() + 3600; applyCfg(); watchdog(); }   // stündlich: Notabschaltung, Zeitpläne
   if (!R.h && upS() - R.hb >= (R.hn < 10 ? 60 : 3600)) vcStart();          // Bedienfeld fehlt: nochmal versuchen
@@ -928,7 +1031,8 @@ function schedule() {
     R.pbNext = now + 900;
   }
   if (S.pu && L.day > S.pu) { S.pu = 0; save(); }
-  if (R.run && R.run.k !== "hand" && (!autoOn() || paused(L))) relayOff("aus");   // Automatik aus: Lauf beenden
+  if (R.run && (R.run.k === "auto" || R.run.k === "retry") && (!autoOn() || paused(L))) relayOff("aus");   // Automatik
+                                                                                    // aus: ihren Lauf beenden
   var wt = R.est && now < C.NTP_WAIT_S;  // eben hochgefahren, Uhr nur geschätzt: erst auf den Zeitserver warten
   if (!wt && S.ev !== L.day && L.min >= C.START_MIN && L.min < C.END_MIN && !R.wx.busy && now >= R.wx.next && !R.run && !R.ps) {
     evaluate(L);
@@ -947,7 +1051,7 @@ function schedule() {
   }
 }
 function onProbe(res, err, msg) { if (!err && res && res.code === 200 && R.off) { setOff(false); save(); } }
-// Alle Hinweise an einer Stelle: LED, Statuszeile und Diagnose zeigen dasselbe. e = Störung (violett), w = Hinweise (gelb)
+// Alle Hinweise an einer Stelle: LED, Statuszeile und Diagnose zeigen dasselbe. e = Störung (rot), w = Hinweise (gelb)
 function checks(L) {
   var w = [], h = hm(C.START_MIN);
   if (!L) w.push("Uhrzeit unbekannt");
@@ -964,8 +1068,9 @@ function statusText(L) {                 // Texte vorab in eigenen Anweisungen: 
   if (R.weld) return "ALARM: Pumpe zieht Strom trotz AUS – Relais klebt? Stecker ziehen!";
   if (r) {
     t = r.sec - (now - r.t0); a = f1(r.mm); b = Math.round(t / 60); c = Math.round(R.sw.apower || 0);
-    return "Beregnung (" + (r.k === "hand" ? "Hand" : (r.k === "retry" ? "Nachlauf" : "Automatik")) + "): " +
-      a + " mm, noch " + (b > 0 ? b : 0) + " min, " + c + " W";
+    if (r.k === "kal") return "Anlernen: " + (r.kp === 1 ? "Hahn offen lassen, Normalleistung messen" :
+      (r.kp === 4 ? "Hahn-zu-Leistung messen" : "jetzt Hahn zudrehen")) + ", " + c + " W";
+    return "Beregnung (" + KIND[r.k] + "): " + a + " mm, noch " + (b > 0 ? b : 0) + " min, " + c + " W";
   }
   if (!L) return "Uhrzeit unbekannt – Automatik wartet auf Internet. Taster geht.";
   if (S.fo && (!f || f.day === L.day)) {    // Störung heute; ältere stehen hinten, bis ein Lauf fehlerfrei war
@@ -985,7 +1090,7 @@ function statusText(L) {                 // Texte vorab in eigenen Anweisungen: 
   if (S.lr) t += " · Zuletzt " + S.lr;
   if (R.note && now - R.noteU > 43200) R.note = "";
   if (R.note) t += " · " + R.note;
-  else if (S.pn) t += " · Pumpe normal " + S.pn + " W";
+  else if (S.pn) t += " · Pumpe angelernt " + S.pn + " W";
   while (t.length > 230 && t.lastIndexOf(" · ") > 0) t = t.slice(0, t.lastIndexOf(" · "));   // Textfeld: 255 Byte
   return t.length > 230 ? t.slice(0, 230) : t;
 }
@@ -1028,7 +1133,7 @@ function ledInit() {                       // aktuellen LED-Zustand lesen, damit
   for (k in LED) if (k !== "run" && o && same(o.rgb, LED[k]) && o.brightness === 100) R.led = k;   // alte Helligkeit: neu setzen
 }
 function ledOf(c) { return c.e ? "err" : (c.w.length ? "warn" : "ok"); }   // Farbe zu den Hinweisen (checks)
-function ledUpdate(L) {                    // jede Farbe ist ein Flash-Schreibvorgang: violett nach 2 min Bestand, jede
+function ledUpdate(L) {                    // jede Farbe ist ein Flash-Schreibvorgang: rot nach 2 min Bestand, jede
   var want = ledOf(checks(L)), now = upS(), a = [], i;                                             // andere erst nach
   if (want !== R.ledWant) { R.ledWant = want; R.ledSince = now; }                                  // 30 min; höchstens
   if (want === R.led || now - R.ledSince < (want === "err" || R.led === "?" ? 120 : 1800)) return; // 12 am Tag
@@ -1051,14 +1156,15 @@ function dur(s) {
   var m = Math.round(s / 60), h = Math.round(m / 60), d = Math.round(m / 1440);
   return m < 120 ? m + " min" : (m < 2880 ? h + " h" : d + " Tage");
 }
-var LEDN = { ok: "grün", warn: "gelb", err: "violett" };
+var LEDN = { ok: "grün", warn: "gelb", err: "rot" };
 function info() {                         // alle Aufrufe vorab, der Text danach (Stapel)
   var u = nowU(), L = u ? loc(u) : null, c = checks(L), now = Shelly.getUptimeMs() / 1000, i, n, t, k = ledOf(c),
       st = statusText(L), cw = c.w.join(", "), w0 = u ? when(u) : "– Uhrzeit unbekannt", wf = S.fu > 1 ? when(S.fu) + " " : "",
       s0 = S.s0 > 0 ? dmy(S.s0) : "-", sm = f1(S.sm), bk = L ? prov(L) : S.d, ob = S.ob > -50 ? f1(S.ob) : "-",
       oa = S.oa > -50 ? f1(S.oa) : "-", wo = R.off && R.oa ? when(R.oa) : "", io = S.io ? when(S.io) : "",
       di = S.io ? dur(S.id * 60) : "", fw = fwVer(), an = u ? when(u - now) : "?", dn = dur(now),
-      t0 = R.t0 > C.T_MIN ? when(R.t0) : "", ds = dur(now - R.s0);
+      t0 = R.t0 > C.T_MIN ? when(R.t0) : "", ds = dur(now - R.s0), lo = r0(pLo()), hi = r0(pHi()),
+      kt = S.kt > 1 ? " " + when(S.kt) : "";
   bk = f1(bk);
   t = "Bewässerung " + w0 + "\n\nStatus: " + st +
     "\nLED: " + (LEDN[R.led] || "noch nicht gesetzt") + (k !== R.led ? ", wechselt bald auf " + LEDN[k] : "") +   // [3]
@@ -1066,8 +1172,9 @@ function info() {                         // alle Aufrufe vorab, der Text danach
     "\nLetzte Störung: " + (S.ft ? wf + S.ft + (S.fo ? " (offen)" : " (erledigt)") : "keine") +
     "\nLetzter Lauf: " + (S.lr || "keiner") +
     "\nSaison seit " + s0 + ": Automatik " + S.sa + ", Hand " + S.sh + ", zusammen " + sm + " mm, Störungen " + S.sf +
-    "\nBodenkonto " + bk + " mm, Normalleistung " + (S.pn ? S.pn + " W" : "nicht gelernt") +
-    ", Eigenwärme Fühler Nacht/Tag " + ob + " / " + oa + " K" +
+    "\nPumpe: " + (S.pn ? "angelernt" + kt + ", normal " + S.pn + " W, Hahn zu " + (S.pc ? S.pc + " W" : (S.kt ? "nicht erkannt" : "nicht gemessen")) :
+      "Voreinstellung, nicht angelernt") + "; Untergrenze " + lo + " W, Obergrenze " + hi + " W" +
+    "\nBodenkonto " + bk + " mm, Eigenwärme Fühler Nacht/Tag " + ob + " / " + oa + " K" +
     "\nUhr: " + (!u ? "unbekannt" : (R.def ? "angenommen" : (R.est ? "geschätzt" : "Zeitserver"))) +
     "\nInternet: " + (R.off ? "Wetterdienst fehlt" + (R.oa ? " seit " + wo : "") :
       (R.la === null ? "ohne Ort kein Wetterabruf" : "ok")) +
@@ -1076,10 +1183,18 @@ function info() {                         // alle Aufrufe vorab, der Text danach
     "\nGerät: Firmware " + fw + ", an seit " + an + " (" + dn + ")" +
     (R.t0 > C.T_MIN ? ", davor zuletzt gespeichert " + t0 : "") + "; Skript läuft seit " + ds +
     "\nFlash-Schreibvorgänge seit Skriptstart: Speicher " + R.nw + ", Einstellungen " + R.nc + ", LED " + R.nl +
-    "\n\nLetzte Meldungen:";
+    "\n\nStörungen (gespeichert, neueste zuerst):" + (R.fl.length ? "" : " keine");
+  i = R.fl.length - 1;
+  while (i >= 0) { t += flLine(R.fl[i]); i--; }
+  t += "\n\nLetzte Meldungen (seit Skriptstart):";
   n = R.lg.length; i = 1;                 // neueste zuerst; while statt for: kostet weniger Stapel
   while (i <= n) { t += lgLine(R.lg[(R.li - i + n) % n]); i++; }
   return t;
+}
+function flLine(g) {                      // Eintrag im Störungsprotokoll -> Zeile; ~ = Uhr war geschätzt
+  var u = Number(g.slice(0, 10)), j = g.indexOf(":"), k = g.slice(11, j), d = g.slice(j + 1), w = u > 1 ? when(u) : "";
+  return "\n" + (w ? (g.charAt(10) === "~" ? "~" : "") + w : "Zeit unbekannt") + " " + (WHY[k] || FLT[k] || k) +
+    (d ? " (" + d + ")" : "");
 }
 function lgLine(g) {                      // Meldung aus log() -> Zeile; ~ = Uhr war geschätzt
   var u = Number(g.slice(0, 10)), L = u ? loc(u) : null, d = L ? dmy(L.day) : "", h = L ? hm(L.min) : "";
@@ -1095,8 +1210,11 @@ function tick() {
   R.k++;
   try {
     st = sw(); swKeep(st); R.u = nowU() || 0;   // Stand dieses Takts für alle tieferen Aufrufe
-    if (st.output && !R.run) runBegin(st);
+    if (R.kw && R.run && R.run.k === "hand" && st.output) kalStart();   // 5 Drücke: diese Handgabe wird zum Anlernen
+    if (R.run && R.run.kp === 2) kalBlip(st);   // Signal beim Anlernen: Relais kurz aus, das ist kein Ende
+    else if (st.output && !R.run) runBegin(st);
     else if (!st.output && R.run) runEnd(st);
+    else if (st.output && R.run && R.run.k === "kal") kalTick(st);
     else if (st.output && R.run) monitor(st);
     else if (R.ps && upS() > R.ps.until) {   // eigener Start nie zu sehen: Firmware schaltete binnen 1 s ab (Anlaufstrom?)
       runBegin(st, 1); R.run.why = "start"; runEnd(st);   // oder Befehl verloren: als Störung werten, sonst bliebe R.ps stehen
@@ -1183,7 +1301,10 @@ function init() {
   ledInit();
   vcStart();
   try { HTTPServer.registerEndpoint("info", onInfo); } catch (e) { log("Diagnose-Seite fehlt: " + e); }
+  if (upS() < 60) {                       // gerade eingesteckt: 5× drücken startet das Anlernen
+    try { R.ko = !!sw().output; R.kh = Shelly.addStatusHandler(onSt); } catch (e2) { log("Anlern-Geste fehlt: " + e2); }
+  }
   Timer.set(1000, true, tick);
-  log("gestartet, Bodenkonto " + r1(S.d) + " mm, Normalleistung " + (S.pn || "noch nicht gelernt"));
+  log("gestartet, Bodenkonto " + r1(S.d) + " mm, Pumpe " + (S.pn ? "angelernt " + S.pn + " W" : "Voreinstellung"));
 }
 init();

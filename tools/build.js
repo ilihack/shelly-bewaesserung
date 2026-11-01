@@ -6,6 +6,8 @@
  *  2. Umlaute und andere Nicht-ASCII-Zeichen in Zeichenketten als \xHH (UTF-8-Bytes) schreiben –
  *     die Shelly-Firmware kennt kein \u, und manche Fassungen lehnen Nicht-ASCII beim Hochladen ab
  *  3. prüfen: reines ASCII, nur ES5-Syntax, keine verbotenen Sprachmittel
+ * Vor 1.: Zahlen und Wahrheitswerte aus Block C an ihren Stellen einsetzen. Jede Eigenschaft eines Objekts belegt am
+ * Shelly Arbeitsspeicher (der Code selbst liegt im Flash); C wird nie geändert, das prüft der Bau.
  * Aufruf: node tools/build.js [quelle] [ziel]
  */
 const fs = require('fs');
@@ -39,8 +41,51 @@ function cKeys(src) {
   throw new Error('Block C nicht gefunden');
 }
 
+// Zahlen und Wahrheitswerte aus Block C einsetzen; C muss dafür nur gelesen werden (keine Zuweisung, kein C[x])
+function cInline(src) {
+  const ast = acorn.parse(src, { ecmaVersion: 5, ranges: true });
+  let cObj = null;
+  for (const st of ast.body) {
+    if (st.type !== 'VariableDeclaration') continue;
+    for (const d of st.declarations) if (d.id.name === 'C' && d.init && d.init.type === 'ObjectExpression') cObj = d.init;
+  }
+  if (!cObj) throw new Error('Block C nicht gefunden');
+  const vals = {}, keep = [], reps = [];
+  for (const p of cObj.properties) {
+    const k = p.key.name || p.key.value, v = p.value;
+    if (v.type === 'Literal' && (typeof v.value === 'number' || typeof v.value === 'boolean')) vals[k] = v.raw;
+    else if (v.type === 'UnaryExpression' && v.operator === '-' && v.argument.type === 'Literal' && typeof v.argument.value === 'number') vals[k] = '(-' + v.argument.raw + ')';
+    else keep.push(src.slice(p.range[0], p.range[1]));
+  }
+  (function walk(n, parent, role) {
+    if (!n || typeof n.type !== 'string') return;
+    if (n.type === 'Identifier' && n.name === 'C' && n !== cObj && !(parent && parent.type === 'VariableDeclarator' && role === 'id')) {
+      const ok = parent && parent.type === 'MemberExpression' && role === 'object' && !parent.computed;
+      if (!ok) throw new Error('C anders als lesend benutzt (Zeichen ' + n.range[0] + ')');
+    }
+    if ((n.type === 'AssignmentExpression' && n.left.type === 'MemberExpression' && n.left.object.name === 'C') ||
+        (n.type === 'UpdateExpression' && n.argument.type === 'MemberExpression' && n.argument.object.name === 'C')) {
+      throw new Error('C wird geändert (Zeichen ' + n.range[0] + ')');
+    }
+    if (n.type === 'MemberExpression' && !n.computed && n.object.type === 'Identifier' && n.object.name === 'C') {
+      if (vals[n.property.name] !== undefined) reps.push([n.range[0], n.range[1], vals[n.property.name]]);
+      else if (!keep.some((k) => k.indexOf(n.property.name + ':') === 0)) throw new Error('C.' + n.property.name + ' fehlt');
+    }
+    for (const key of Object.keys(n)) {
+      const v = n[key];
+      if (Array.isArray(v)) v.forEach((x) => walk(x, n, key)); else if (v && typeof v.type === 'string') walk(v, n, key);
+    }
+  })(ast, null, null);
+  reps.push([cObj.range[0], cObj.range[1], '{' + keep.join(', ') + '}']);
+  reps.sort((a, b) => b[0] - a[0]);
+  let out = src;
+  for (const [a, b, r] of reps) out = out.slice(0, a) + r + out.slice(b);
+  return { code: out, n: Object.keys(vals).length };
+}
+
 (async () => {
-  const src = fs.readFileSync(SRC, 'utf8');
+  const src0 = fs.readFileSync(SRC, 'utf8');
+  const inl = cInline(src0), src = inl.code;
   // dazu lange Namen im Laufzeitzustand R, die nirgends sonst (Firmware, Speicher, Textschlüssel) vorkommen
   const keys = cKeys(src).concat(['lastStop', 'fault', 'noStore', 'paShown', 'lastTxt', 'lastD', 'noteU', 'defAt',
     'pbNext', 'ledWant', 'ledSince', 'tries', 'until']);
@@ -85,8 +130,9 @@ function cKeys(src) {
   // Am Gerät geprüft (Firmware 2.0.3): alle hier eingetragenen da; shift und unshift fehlen. Neue Methode: erst am Gerät
   // per Script.Eval mit typeof prüfen, dann hier eintragen.
   const AM_GERAET = new Set(['floor', 'round', 'abs', 'min', 'max', 'cos', 'sin', 'tan', 'acos',   // Math
-    'parse', 'stringify', 'push', 'join', 'charAt', 'charCodeAt', 'slice', 'lastIndexOf', 'replace', 'toLowerCase',
-    'call', 'getUptimeMs', 'getComponentStatus', 'getComponentConfig', 'getDeviceInfo',              // Shelly
+    'parse', 'stringify', 'push', 'join', 'charAt', 'charCodeAt', 'slice', 'indexOf', 'lastIndexOf', 'replace', 'toLowerCase',
+    'call', 'getUptimeMs', 'getComponentStatus', 'getComponentConfig', 'getDeviceInfo', 'addStatusHandler',   // Shelly
+    'removeStatusHandler',
     'getItem', 'setItem', 'set', 'getHandle', 'getValue', 'setValue', 'getStatus', 'on', 'off', 'registerEndpoint', 'send']);
   (function walk(node) {
     if (!node || typeof node.type !== 'string') return;
@@ -100,7 +146,7 @@ function cKeys(src) {
   })(acorn.parse(src, { ecmaVersion: 5, locations: true }));
   fs.mkdirSync(path.dirname(OUT), { recursive: true });
   fs.writeFileSync(OUT, code);
-  console.log(JSON.stringify({ quelle: src.length, geraet: code.length, funktionsTiefe: maxDepth,
+  console.log(JSON.stringify({ quelle: src0.length, geraet: code.length, eingesetzt: inl.n, funktionsTiefe: maxDepth,
     stapel: tief ? Math.round(tief.anteil * 100) + ' % (' + tief.einstieg + ')' : '-', fehler: errs }, null, 1));
   if (errs.length) process.exit(1);
 })();
