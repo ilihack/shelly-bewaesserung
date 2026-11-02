@@ -1,12 +1,15 @@
 {
   "name": "shelly-bewaesserung",
   "version": "2.0.0",
+  "private": true,
   "description": "Bewässerung mit Brunnenpumpe am Shelly Outdoor Plug S Gen3: gießt nach Wetter (Open-Meteo, FAO-56), schützt die Pumpe über die Leistungsmessung, läuft auch ohne Internet.",
   "scripts": {
     "build": "node tools/build.js && node tools/browser-snippet.js",
     "test": "node emu/stapel-test.js && node emu/scenarios.js src/bewaesserung.js && node emu/scenarios.js build/bewaesserung.min.js",
     "zufall": "node emu/zufall.js",
-    "deploy": "node tools/deploy.js"
+    "deploy": "node tools/deploy.js",
+    "fuzz": "node emu/fuzz.js",
+    "abdeckung": "node tools/abdeckung.js"
   },
   "keywords": [
     "shelly",
@@ -19,7 +22,10 @@
   ],
   "author": "ilihack",
   "license": "MIT",
-  "dependencies": {
+  "engines": {
+    "node": ">=18"
+  },
+  "devDependencies": {
     "acorn": "^8.19.0",
     "terser": "^5.51.2"
   },

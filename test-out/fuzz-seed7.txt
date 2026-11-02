@@ -1,0 +1,56 @@
+Fuzzer: 200 Welten, Seed 7, bewaesserung.js, 1 Prozesse
+  … 20 Welten (67 s)
+  … 40 Welten (125 s)
+  … 60 Welten (202 s)
+  … 80 Welten (256 s)
+  … 100 Welten (327 s)
+  … 120 Welten (395 s)
+  … 140 Welten (459 s)
+  … 160 Welten (538 s)
+  … 180 Welten (610 s)
+  … 200 Welten (687 s)
+
+==== Fuzzer: 200 Welten, Haupt-Seed 7, 403 simulierte Tage, 11.5 min [bewaesserung.js]
+Eingriffe je Kanal: cfg 1137 · clock 4148 · ev 12528 · geo 2003 · grp 533 · probe 14 · pump 1557 · rpc 13001 · store 2807 · sw 1653 · sys 926 · vc 7143 · wx 774; verschiedene Arten: 303
+Läufe 5420, davon Automatik/Nachlauf 59 (25 bei richtiger Uhr geprüft), Schutzabschaltungen 4588
+Höchstwerte: Lauf ab Start/Übernahme 120.0 (Welt 91) min, ab Ein mit Notabschaltung 120.0 (Welt 91) min · Statustext 242 (Welt 156) Byte · Speicher-Versuch 658 (Welt 74) Byte · Schreibvorgänge in 24 h gleitend 66 (Welt 23) · LED in 24 h 7 (Welt 9) · Einstellungen in 24 h 46 (Welt 171)
+Speicher-Stellvertreter (größte Länge): R.lg[] 6 · R.fl[] 5 · R.kts[] 5 · R.starts[] 11 · R.ledN[] 7 · S.xe[] 14 · S.xw[] 14
+Regeln: absturz ok · firmware-grenzen ok · laufzeit-120 ok · laufzeit-130 ok · aus-nach-schutz ok · speicher-1024 ok · schreibbremse-minute ok · schreibbremse-24h ok · schreibbremse-gleitend ok · led-deckel ok · einstellungen-deckel ok · relais-einstellung-stuendlich ok · statustext-typ ok · statustext-255 ok · diagnose-seite ok · automatik-zeit ok · automatik-winter ok · automatik-aus ok · speicher-proxy ok · zustand ok · eval-selbsttest ok · fuzzer-intern ok
+
+Gefangene Fehler („Fehler …“), verschieden: 31
+  ×121 in 1 Welten, zuerst Welt 16 [Seed 2298833499] 2027-11-23 07:19:22: [BW] Fehler Takt: Error: null [fz]
+  ×61 in 35 Welten, zuerst Welt 9 [Seed 516684523] 2028-11-30 06:48:03: [BW] Fehler Takt: Error: RPC fehlt [fz]
+  ×58 in 35 Welten, zuerst Welt 16 [Seed 2298833499] 2027-11-25 10:22:15: [BW] Fehler Plan: Error: removeStatusHandler [fz]
+  ×55 in 42 Welten, zuerst Welt 10 [Seed 861770035] 2028-05-19 23:49:11: [BW] Fehler Plan: Error: Invalid argument [fz]
+  ×53 in 24 Welten, zuerst Welt 10 [Seed 861770035] 2028-05-21 21:39:16: [BW] Fehler Takt: Error: Invalid argument [fz]
+  ×49 in 34 Welten, zuerst Welt 5 [Seed 4265746316] 2029-03-26 04:36:37: [BW] Fehler Plan: Error: Out of memory [fz]
+  ×48 in 32 Welten, zuerst Welt 5 [Seed 4265746316] 2029-03-25 22:36:37: [BW] Fehler Plan: Error: Too many calls in progress [fz]
+  ×42 in 23 Welten, zuerst Welt 10 [Seed 861770035] 2028-05-21 04:08:24: [BW] Fehler Takt: Error: Out of memory [fz]
+  ×41 in 27 Welten, zuerst Welt 10 [Seed 861770035] 2028-05-19 23:50:11: [BW] Fehler Plan: Error: RPC fehlt [fz]
+  ×41 in 29 Welten, zuerst Welt 10 [Seed 861770035] 2028-05-21 21:40:18: [BW] Fehler Takt: Error: Too many calls in progress [fz]
+  ×30 in 20 Welten, zuerst Welt 10 [Seed 861770035] 2028-05-20 07:19:16: [BW] Fehler Start: Error: Out of memory [fz]
+  ×29 in 21 Welten, zuerst Welt 10 [Seed 861770035] 2028-05-20 02:08:36: [BW] Fehler Start: Error: RPC fehlt [fz]
+  ×24 in 17 Welten, zuerst Welt 11 [Seed 3753668458] 2029-08-11 12:58:39: [BW] Fehler Start: Error: Too many calls in progress [fz]
+  ×24 in 18 Welten, zuerst Welt 16 [Seed 2298833499] 2027-11-24 04:09:16: [BW] Fehler im Rückruf: Error: Too many calls in progress [fz]
+  ×24 in 19 Welten, zuerst Welt 16 [Seed 2298833499] 2027-11-24 05:07:09: [BW] Fehler Start: Error: Invalid argument [fz]
+  ×19 in 18 Welten, zuerst Welt 10 [Seed 861770035] 2028-05-19 22:44:46: [BW] Fehler im Rückruf: Error: Invalid argument [fz]
+  ×18 in 15 Welten, zuerst Welt 10 [Seed 861770035] 2028-05-20 11:54:16: [BW] Fehler im Rückruf: Error: Out of memory [fz]
+  ×17 in 14 Welten, zuerst Welt 16 [Seed 2298833499] 2027-11-23 04:54:57: [BW] Fehler im Rückruf: Error: RPC fehlt [fz]
+  ×7 in 5 Welten, zuerst Welt 10 [Seed 861770035] 2028-05-22 17:54:42: [BW] Fehler Anzeige: Error: Invalid argument [fz]
+  ×7 in 7 Welten, zuerst Welt 79 [Seed 1506798539] 2029-01-02 04:05:01: [BW] Fehler Anzeige: Error: Too many calls in progress [fz]
+  ×4 in 4 Welten, zuerst Welt 16 [Seed 2298833499] 2027-11-25 10:35:27: [BW] Fehler Anzeige: Error: Out of memory [fz]
+  ×3 in 3 Welten, zuerst Welt 26 [Seed 786521597] 2028-02-29 04:55:26: [BW] Fehler Bedienfeld: Error: Out of memory [fz]
+  ×2 in 2 Welten, zuerst Welt 9 [Seed 516684523] 2028-11-29 03:59:39: [BW] Fehler Bedienfeld: Error: Invalid argument [fz]
+  ×2 in 2 Welten, zuerst Welt 104 [Seed 976066816] 2029-05-29 06:14:06: [BW] Fehler Takt: Error: Testfehler
+  ×1 in 1 Welten, zuerst Welt 33 [Seed 4012068467] 2027-10-29 23:19:41: [BW] Fehler Taster: Error: Testfehler
+  ×1 in 1 Welten, zuerst Welt 39 [Seed 3595292590] 2027-12-01 13:48:02: [BW] Fehler Anzeige: Error: Testfehler
+  ×1 in 1 Welten, zuerst Welt 39 [Seed 3595292590] 2027-12-01 19:00:15: [BW] Fehler Start: Error: xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+  ×1 in 1 Welten, zuerst Welt 39 [Seed 3595292590] 2027-12-01 19:00:16: [BW] Fehler Plan: Error: xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+  ×1 in 1 Welten, zuerst Welt 110 [Seed 1014010232] 2029-03-10 18:34:33: [BW] Fehler Anzeige: Error: RPC fehlt [fz]
+  ×1 in 1 Welten, zuerst Welt 127 [Seed 2197100256] 2027-11-04 02:07:09: [BW] Fehler Bedienfeld: Error: RPC fehlt [fz]
+  ×1 in 1 Welten, zuerst Welt 156 [Seed 2855117610] 2043-05-12 12:31:01: [BW] Fehler Bedienfeld: Error: Too many calls in progress [fz]
+Diagnose-Seite mit Code 500, verschieden: 0
+
+Wiedergabe einer Welt: FUZZ_WELT=<n> node emu/fuzz.js src/bewaesserung.js 200 7
+
+200 von 200 Welten ohne Regelverstoß, 31 verschiedene gefangene Fehler [bewaesserung.js]

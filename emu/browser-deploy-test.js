@@ -1,8 +1,9 @@
 'use strict';
 /*
  * Prüft den Browserweg: build/deploy-browser.js wird in einem echten Chromium auf der Seite des
- * nachgebauten Shelly ausgeführt, so wie am Montag auf http(s)://<ip>/ (mit Firmware-Update und Wächtertest).
- * Aufruf: NODE_PATH=$(npm root -g) node emu/browser-deploy-test.js
+ * nachgebauten Shelly ausgeführt, so wie beim echten Aufspielen auf http(s)://<ip>/ (mit Firmware-Update und Wächtertest).
+ * Aufruf: node emu/browser-deploy-test.js  (braucht Playwright: npm install --no-save playwright && npx playwright install chromium;
+ * global installiert: NODE_PATH=$(npm root -g) node emu/browser-deploy-test.js)
  */
 const fs = require('fs');
 const path = require('path');

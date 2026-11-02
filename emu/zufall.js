@@ -6,7 +6,7 @@
  * Wetterantworten, Pumpe trocken/Hahn zu/blockiert/Luft/ohne Last/Abschaltung beim Anlauf, Tastendruck, Bedienfeld-Werte, Skript-Neustart
  * und -Absturz (der Wächter startet neu). Wetter zufällig, auch Frost und Starkregen.
  * Regeln: kein Absturz, Grenzen der Firmware, Statustext <= 255 Byte, Speicher gültig und <= 1024 Byte,
- * Konto 0..25 mm, kein Lauf länger als 161 min, ein vom Skript gestarteter oder gesehener Lauf höchstens 120 min, LED höchstens
+ * Konto 0..25 mm, kein Lauf länger als 131 min, ein vom Skript gestarteter oder gesehener Lauf höchstens 120 min, LED höchstens
  * 12 Wechsel in 24 h (je Skriptstart einer mehr); bei richtiger Uhr: Automatik nur 10:00 bis 12:30, nicht bei
  * Automatik aus, Pause oder Winterpause.
  */

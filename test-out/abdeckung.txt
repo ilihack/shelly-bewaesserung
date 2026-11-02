@@ -1,0 +1,28 @@
+Prozesse ausgewertet: 18 (V8 fasst je Prozess alle Welten mit diesem Quelltext zusammen); Code erreicht: 98.4 %; nie erreichte Stellen: 27
+Zeile 306: D.d = 0;
+Zeile 307: D.pi = 0;
+Zeile 440: : L.m >= a || L.m <= b
+Zeile 543: return;
+Zeile 588: || (u || 0) + 1800
+Zeile 591: : 1
+Zeile 597: && now > R.ps.until
+Zeile 597: R.ps = null;
+Zeile 603: return "kurz";
+Zeile 787: : 0
+Zeile 796: : 0
+Zeile 859: catch (e2) { log("Fehler Tagesprüfung: " + e2); S = JSON.parse(s0); R.wx.busy = false; R.wx.rc = false; if (L  …
+Zeile 870: { R.wx.rc = false; R.rh = 0; }
+Zeile 886: || 0
+Zeile 967: R.why = "nicht nötig (" + fD + " mm)";
+Zeile 973: || 0
+Zeile 1011: else if (c > 193 && c < 224 && d > 127 && d < 192) { b = d; i++; } else { b = 128 | (c & 63); c = 192 | (c >>  …
+Zeile 1013: o += "%" + x.charAt(c >> 4) + x.charAt(c & 15) + "%" + x.charAt(b >> 4) + x.charAt(b & 15);
+Zeile 1033: R.oa = u || 0;
+Zeile 1039: || 1
+Zeile 1066: && now - R.cp < 60
+Zeile 1145: ? t.slice(0, 230)
+Zeile 1256: catch (e) { res.body = "Fehler: " + e; res.code = 500; }
+Zeile 1281: catch (e4) { log("Fehler Speicher: " + e4); }
+Zeile 1333: && typeof C.LON === "number"
+Zeile 1333: { R.la = C.LAT; R.lo = C.LON; }
+Zeile 1351: || 0

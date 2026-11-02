@@ -28,10 +28,10 @@
 [BW] Pumpe aus: Ende/Stopp, 6 mm gegeben
 [BW] Tagesprüfung: Defizit 3.4 mm -> nicht nötig (3,4 mm)
 ## Relais: AN 09:00 T20970 taster | AUS 09:00 T20970 taster | AN 09:00 T20970 taster | AUS 09:00 T20970 taster | AN 09:00 T20970 taster | AUS 09:02 T20970 skript | AN 10:00 T20970 skript | AUS 10:20 T20970 skript | AN 11:20 T20970 skript | AUS 12:37 T20970 timer | AN 18:00 T20970 taster | AUS 18:41 T20970 timer
-## Zustand: {"v":1,"t":1811923202,"d":3.4,"dp":20970,"pi":0,"ev":20971,"pn":1320,"ln":3,"pu":0,"fd":20970,"fc":1,"rt":0,"rm":11,"lr":"01.06. 18:00 Hand 6 mm","pc":818,"kt":1811833322,"rq":0,"xa":-1,"xe":[],"xw":[],"xd":0,"ob":-99,"oa":-99,"df":0,"rd":-1,"rx":0,"rc":-1,"rk":0,"rf":0,"tu":90002,"ce":0,"cs":0,"fu":1811838009,"ft":"Trockenlauf oder Hahn zu (585 W < 1069 W)","fo":0,"s0":20970,"sa":2,"sh":1,"sm":19.8,"sf":1,"io":0,"id":0,"os":0,"wu":90002,"wn":1,"wb":90002,"la":49.48,"lo":8.45,"pz":"DELudwigshafen am Rhein"}
+## Zustand: {"v":1,"t":1811923202,"d":3.4,"dp":20970,"pi":0,"ev":20971,"pn":1320,"pc":818,"kt":1811833322,"pu":0,"fd":20970,"fc":1,"rt":0,"rm":11,"rq":0,"lr":"01.06. 18:00 Hand 6 mm","xa":-1,"xd":0,"ob":-99,"oa":-99,"df":0,"rd":-1,"rx":0,"rc":-1,"rk":0,"rf":0,"tu":90002,"ce":0,"cs":0,"fu":1811838009,"ft":"Trockenlauf oder Hahn zu (585 W < 1069 W)","fo":0,"s0":20970,"sa":2,"sh":1,"sm":19.8,"sf":1,"io":0,"id":0,"os":0,"wu":90002,"wn":1,"wb":90002,"la":49.48,"lo":8.45,"pz":"DELudwigshafen am Rhein","xe":[],"xw":[]}
 ## Status: Heute: nicht nötig (3,4 mm) · Zuletzt 01.06. 18:00 Hand 6 mm · Pumpe angelernt 1320 W
 ## Zeitplaene: [{"enable":true,"timespec":"0 */5 * * * *","calls":[{"method":"Script.Start","params":{"id":1}}],"id":1},{"enable":true,"timespec":"0 23 3 * * *","calls":[{"method":"Shelly.Update","params":{"stage":"stable"}}],"id":2}] | LED: {"leds":{"mode":"switch","colors":{"switch:0":{"on":{"rgb":[0,0,100],"brightness":100},"off":{"rgb":[0,100,0],"brightness":100}}}}}
-## Diagnose (200, 1245 Zeichen; Speicher davor 5557, mit Seite 5664 Bloecke)
+## Diagnose (200, 1245 Zeichen; Speicher davor 5566, mit Seite 5673 Bloecke)
 ## | Bewässerung 02.06.2027 11:00
 ## | 
 ## | Status: Heute: nicht nötig (3,4 mm) · Zuletzt 01.06. 18:00 Hand 6 mm · Pumpe angelernt 1320 W
@@ -57,5 +57,5 @@
 ## | 01.06. 12:37 Pumpe aus: Ende/Stopp, 11 mm gegeben
 ## | 01.06. 11:20 Pumpe an (retry), Ziel 11 mm in 77 min
 ## | 01.06. 10:20 Pumpe aus: unterlast, 2.8 mm gegeben
-## Zahlen: Schreibvorgaenge 16, LED 4, Konfig 15, Fehler 0, RPC max 3, Timer max 1, Speicher max 5931 von 8192 Bloecken
+## Zahlen: Schreibvorgaenge 16, LED 4, Konfig 15, Fehler 0, RPC max 3, Timer max 1, Speicher max 5946 von 8192 Bloecken
 ## ENDE

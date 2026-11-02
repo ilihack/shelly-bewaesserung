@@ -6,6 +6,7 @@
  * HTTP.GET gegen einen Wetterdienst, Taster. Läuft auf virtueller Zeit (Ereignisliste).
  * Zusätzlich prüft er die Firmware-Grenzen: höchstens 5 Timer, 5 offene RPCs, 5 Handler je Skript,
  * Script.storage: Schlüssel <= 16 Byte, Wert <= 1024 Byte, <= 12 Einträge.
+ * Haken für den Fuzzer: w.fuzz (siehe startScript); ungesetzt ändert er nichts.
  */
 const vm = require('vm');
 const CFG_RPC = ['Switch.SetConfig', 'Virtual.Add', 'Group.Set', 'PLUGS_UI.SetConfig', 'Schedule.Create', 'Schedule.Update'];
@@ -371,6 +372,7 @@ class World {
               break;
             }
             case 'Sys.SetTime': {             // wirkt erst, wenn der Aufruf durch ist (wie ein echter RPC);
+              if (w.setTimeFail > 0) { w.setTimeFail--; err = -103; msg = 'Testfehler'; break; }                // Test
               post = () => {                  // w.setTimeIgnored: Firmware, die eine gestellte Zeit nicht als unixtime meldet
                 if (!dev.ntpSynced && !w.setTimeIgnored) { dev.clockBase = params.unixtime * 1000; dev.clockUp = w.uptime(dev); }
               };
@@ -425,6 +427,9 @@ class World {
       },
       removeStatusHandler(id) { if (dev.stHandlers[id]) { delete dev.stHandlers[id]; dev.handlers--; } }
     };
+    // Fuzzer (emu/fuzz.js): w.fuzz(ctx, dev, guard) darf jede Schnittstelle des Skripts umhüllen, bevor es läuft; mit guard
+    // stellt er Rückrufe so zu wie der Emulator (nach Neustart verworfen, Fehler = Absturz). Ohne w.fuzz bleibt alles gleich.
+    if (w.fuzz) w.fuzz(ctx, dev, guard);
     vm.createContext(ctx);
     dev.ctx = ctx; dev.scriptRunning = true;
     try { vm.runInContext(w.code, ctx, { filename: 'bewaesserung.js' }); }

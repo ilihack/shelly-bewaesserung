@@ -12,17 +12,17 @@ Ein Skript für den **Shelly Outdoor Plug S Gen3**: Der Stecker schaltet eine Br
   - Haben Regen oder Frost die Gabe verhindert, schaut es um 11:05 und 12:05 nochmal nach. Nach 12:30 startet keine Automatik mehr.
 - **Schützt die Pumpe.** Es erkennt über die Leistung Trockenlauf, einen zugedrehten Hahn, Blockade, eine fehlende Last und ein klebendes Relais.
   - Die Leistung der Pumpe lernt es auf Knopfdruck: Hahn auf, einstecken, 10 s warten, fünfmal drücken, binnen 10 s. Es misst die Normalleistung; wird die LED weiß, Hahn zudrehen, dann misst es auch die Leistung bei zugedrehtem Hahn. Ein Signal mit Aus und Ein gibt es nicht: Ohne Rückschlagventil liefe die Pumpe dabei gegen die zurücklaufende Wassersäule an. Bis zum Anlernen gelten Voreinstellungen; aus gewöhnlichen Läufen lernt es nichts.
-  - Schon vor dem Anlernen erkennt es einen Hahn, der im Lauf zugedreht wird: Jeder Lauf nimmt seine Leistung kurz nach dem Anlauf als Bezug und schaltet ab, wenn sie 20 % darunter fällt. Angelernt gelten die gespeicherten Grenzen, auch nach jedem Neustart; sie erkennen auch einen Hahn, der schon vor dem Start zu ist.
-  - Bricht ein Automatiklauf mit einer Störung ab, startet es nach 6 min einen zweiten Versuch, wenn die Störung beim Anlauf kam, sonst nach 60 min. Störungen bei Handgaben zählen nicht mit.
+  - Schon vor dem Anlernen erkennt es einen Hahn, der im Lauf zugedreht wird: Jeder Lauf nimmt seine Leistung kurz nach dem Anlauf als Bezug und schaltet ab, wenn sie 20 % darunter fällt. Angelernt gelten die gespeicherten Grenzen, auch nach jedem Neustart; wurde beim Anlernen zugedreht, erkennen sie auch einen Hahn, der schon vor dem Start zu ist.
+  - Bricht ein Automatiklauf mit einer Störung ab, startet es nach 6 min einen zweiten Versuch, wenn die Störung beim Anlauf kam, sonst nach 60 min; nach Trockenlauf bis zu zwei. Nur wenn noch mindestens 2 mm fehlen und vor 12:30. Störungen bei Handgaben zählen nicht mit.
   - Jeder Lauf, Hand wie Automatik, endet nach spätestens 120 min, auch wenn das Skript danach stehen bleibt: eine zweite Grenze, falls ein zugedrehter Hahn unerkannt bleibt. Drückt man, während das Skript steht, macht es beim nächsten Start eine gewöhnliche Handgabe daraus, höchstens bis 120 min ab Beginn.
   - Unabhängig vom Skript schaltet die Firmware das Relais nach 130 min ab.
 - **Hält sich selbst in Gang.** Ein Zeitplan der Firmware startet ein stehendes Skript binnen 5 min neu. Ein zweiter installiert jede Nacht um 03:23 die neueste stabile Firmware, falls es eine gibt.
   - Wächter, Einschaltzustand und Notabschaltung stellt das Skript stündlich nach, falls sie in der App verstellt wurden. Das Firmware-Update legt es nur an, wenn es keines gibt: In der App abgeschaltet, bleibt es aus.
   - Ein Fehler beim Verarbeiten einer Antwort hält das Skript nicht an. Es verwirft das Halbverbuchte und versucht es später nochmal.
-  - Fehlt ein Bedienelement, etwa in der App gelöscht, legt das Skript es binnen einer Minute neu an.
-  - Eine Schreibbremse schützt den Flash-Speicher, auch vor einem Programmfehler: Den Zustand schreibt es höchstens einmal je Minute und nach 48 Schreibvorgängen am Tag nur noch stündlich. Ein Skript-Neustart schreibt nichts, und die Bremse zählt über Neustarts weiter: Eine Absturzschleife, in der der Wächter das Skript alle 5 min neu startet, schreibt so nicht bei jedem Start. Einstellungen schreibt es nur, wenn sie abweichen: Bedienfeld und Zeitpläne höchstens 30-mal am Tag; die LED wechselt erst nach 30 min Bestand (auf Rot nach 2 min) und höchstens 12-mal am Tag; die Relais-Sicherungen stellt es immer zurück.
+  - Fehlt ein Bedienelement, etwa in der App gelöscht, legt das Skript es binnen einer Minute neu an. Automatik und Regenrate gelten auch, solange das Bedienfeld unvollständig ist.
+  - Eine Schreibbremse schützt den Flash-Speicher, auch vor einem Programmfehler: Den Zustand schreibt es höchstens einmal je Minute und nach 48 Schreibvorgängen am Tag nur noch stündlich. Ein Skript-Neustart schreibt nichts, und die Bremse zählt über Neustarts weiter: Eine Absturzschleife, in der der Wächter das Skript alle 5 min neu startet, schreibt so nicht bei jedem Start. Einstellungen schreibt es nur, wenn sie abweichen: Bedienfeld und Zeitpläne höchstens 30-mal am Tag; die LED wechselt erst nach 30 min Bestand (auf Rot nach 2 min) und höchstens 12-mal am Tag, Rot und Anlernen ausgenommen; die Relais-Sicherungen stellt es immer zurück.
 - **Kommt ohne Internet aus.**
-  - Es rechnet mit Monatsmitteln und der Temperatur seines eigenen Fühlers. Die Eigenwärme des Steckers lernt es selbst, solange es Internet hat, und nur draußen: Folgt der Fühler dem Tagesgang kaum, steht der Stecker drinnen, und es lernt nichts. Ungelernt rechnet es vorsichtig mit 15 K.
+  - Es rechnet mit Monatsmitteln und der Temperatur seines eigenen Fühlers. Die Eigenwärme des Steckers lernt es selbst, solange es Internet hat, und nur draußen: Folgt der Fühler dem Tagesgang kaum, steht der Stecker drinnen, und es lernt nichts. Ungelernt rechnet es vorsichtig: nachts mit 15 K, damit Frost eher zu früh erkannt wird, tagsüber mit 10 K, damit eher mehr gegossen wird.
   - Ohne Internet gießt es lieber etwas mehr.
   - Kommt das Internet zurück, rechnet es die geschätzten Tage mit echten Daten neu, bis 14 Tage rückwirkend.
 - **Findet seinen Ort** aus dem Ortsnamen, über die Ortssuche von Open-Meteo, einmal; danach ist er gespeichert. Kennt die Ortssuche den Namen nicht, meldet es das (Status, LED gelb) und gießt wie ohne Internet.
@@ -30,7 +30,7 @@ Ein Skript für den **Shelly Outdoor Plug S Gen3**: Der Stecker schaltet eine Br
   - Die Uhrzeit kommt vom Zeitserver. Nach dem Hochfahren warten Tagesprüfung und ein geplanter Nachlauf bis zu 10 min auf ihn, denn nach einem Stromausfall braucht der Router Minuten; bis dahin gilt der Anker, der nie vorgeht.
   - Bleibt das Internet ganz weg, stellt es die Uhr nach der nächsten klaren Nacht am Tagesgang der Temperatur nach.
 - **Wird bedient** über den Taster am Stecker oder den Schalter in der App: einmal drücken ist eine Handgabe, nochmal drücken stoppt sie.
-  - Dazu kommt ein Bedienfeld in der Shelly-App: Status, Wasserdefizit, Automatik, Pause, Regenrate, Pumpe neu einlernen.
+  - Dazu kommt ein Bedienfeld in der Shelly-App: Status, Wasserdefizit, Automatik, Pause, Regenrate und „Pumpe neu einlernen“. Dieser Knopf setzt die Pumpenwerte auf die Voreinstellung zurück; angelernt wird danach mit der Geste.
   - Die LED leuchtet dauernd und in voller Helligkeit: grün = alles gut, blau = Pumpe läuft (beim Anlernen weiß: jetzt den Hahn zudrehen), gelb = Daten fehlen (Wetterdienst, Uhr oder Ort), rot = der letzte Lauf hatte eine Störung, die Firmware hat das Einschalten abgelehnt oder das Anlernen ist abgebrochen. Rot bleibt, bis ein Lauf wieder eine Minute fehlerfrei gepumpt hat oder ein Anlernen gelingt, auch über Mitternacht und Neustarts; die Statuszeile nennt die Störung mit Datum. Rot auch, solange das Relais klebt oder der Speicher nicht schreibt. Blinken gehört der Firmware: rot bei WLAN-Problemen und Updates, blau im Access-Point-Modus.
   - Eine **Diagnose-Seite** im Browser, `http://<IP>/script/<Skriptnummer>/info`, zeigt alles auf einen Blick: Status, Grund der LED-Farbe, letzte Störung (offen oder erledigt), Saisonzahlen (Läufe, Millimeter, Störungen), den letzten Ausfall des Wetterdienstes, Uhr, Ort, letzten Neustart, Flash-Schreibvorgänge, die angelernten Pumpenwerte mit beiden Grenzen, die letzten 5 Störungen (gespeichert, auch nach einem Stromausfall zu sehen, ebenso abgebrochenes Anlernen) und die letzten 6 Meldungen seit dem Skriptstart. Hat der Shelly ein Gerätepasswort, fragt der Browser danach (Benutzer `admin`). Die Seite entsteht erst beim Aufruf und schreibt nichts.
 
@@ -76,20 +76,20 @@ I ist der Nennstrom laut Typenschild. Die Formeln rechnen mit dem Strom, weil di
 | `BLANK_S` | Tauchpumpe 40 s; Oberflächen- und Jetpumpe: Ansaugzeit + 20 s | 40 s |
 
 - `P_ABS_*` gelten nur, bis die Pumpe angelernt ist. Danach liegt die Obergrenze bei `OVER_REL` (130 %) der Normalleistung, die Untergrenze in der Mitte zwischen Normal- und Hahn-zu-Leistung. Zieht die Pumpe bei zugedrehtem Hahn weniger als `GAP_MIN` (20 %) weniger, wäre der Hahn nicht sicher zu erkennen: Dann gilt `UNDER_REL` (75 %), und das Anlernen meldet es.
-- **Oberflächen- und Jetpumpen** gehen mit denselben Formeln. Ohne Fußventil läuft die Saugleitung leer, und die Pumpe saugt bei jedem Start neu an, bei langer Leitung bis zu 5 min. So lang muss `BLANK_S` sein, sonst hält das Skript das Ansaugen für Trockenlauf.
+- **Oberflächen- und Jetpumpen** gehen mit denselben Formeln. Ohne Fußventil läuft die Saugleitung leer, und die Pumpe saugt bei jedem Start neu an, bei langer Leitung bis zu 5 min. `BLANK_S` muss die Ansaugzeit plus 20 s sein, sonst hält das Skript das Ansaugen für Trockenlauf.
 - **Hauswasserwerke mit Druckschalter** passen nicht: Der Schalter hält die Pumpe zeitweise an, etwa beim Start, solange der Kessel noch Druck hat; das Skript meldet dann „Pumpe zieht keinen Strom“.
 
 ## Aufspielen
 
 ```sh
-npm install
+npm install                      # Node 18 oder neuer
 npm run build                    # build/bewaesserung.min.js (gekürzt, Einstellwerte eingesetzt, nur ASCII, Sprachmittel, Stapel und Methoden geprüft) und build/deploy-browser.js
 node tools/deploy.js <IP-des-Shelly> [--passwort <Gerätepasswort>] [--neues-passwort <neues Passwort>]
 ```
 
 `--neues-passwort` setzt zum Schluss das Gerätepasswort (Benutzer `admin`) und meldet sich zur Probe damit an. Danach braucht jeder weitere Aufruf `--passwort`.
 
-Ohne Node geht es auch im Browser, solange der Shelly kein Passwort hat. Auf der Weboberfläche des Shelly (`http://<IP>/`) die Entwicklerkonsole öffnen, den Inhalt von `build/deploy-browser.js` einfügen und Enter drücken. Das Aufspielen startet sofort und meldet sich in der Konsole; das Ergebnis steht danach in `window.__bw`.
+Ohne Node geht es auch im Browser, solange der Shelly kein Passwort hat. `build/deploy-browser.js` enthält die fertige Gerätefassung, eingestellt für Ludwigshafen am Rhein und die Werte oben; für einen anderen Ort oder andere Werte erst `npm run build`. Auf der Weboberfläche des Shelly (`http://<IP>/`, ab Firmware 2.0 `https://`) die Entwicklerkonsole öffnen, den Inhalt von `build/deploy-browser.js` einfügen und Enter drücken. Das Aufspielen startet sofort und meldet sich in der Konsole; das Ergebnis steht danach in `window.__bw`.
 
 Das Werkzeug geht so vor:
 - Es prüft das Modell und installiert die neueste stabile Firmware.
@@ -111,12 +111,12 @@ Danach prüft es:
 
 Erst wenn alles stimmt, meldet es „FERTIG“.
 
-**Nicht von Hand einfügen:** Der Skript-Editor der Weboberfläche schneidet beim Einfügen nach 20 000 Zeichen ab, die Gerätefassung hat rund 35 000. Das Skript endet dann mitten im Code, und der Shelly meldet „Syntax ungültig“. Ohne Node daher den Browserweg oben nehmen: Er lädt in Stücken hoch.
+**Nicht von Hand einfügen:** Der Skript-Editor der Weboberfläche schneidet beim Einfügen nach 20 000 Zeichen ab, die Gerätefassung hat rund 36 000. Das Skript endet dann mitten im Code, und der Shelly meldet „Syntax ungültig“. Ohne Node daher den Browserweg oben nehmen: Er lädt in Stücken hoch.
 
-Bedienfeld, Relais-Einstellungen, Wächter, LED und Firmware-Update richtet das Skript selbst ein. Den Access Point und das Passwort (Weboberfläche: *Settings → Device settings → Authentication*) stellst du selbst ein.
+Bedienfeld, Relais-Einstellungen, Wächter, LED und Firmware-Update richtet das Skript selbst ein. Das Gerätepasswort setzt das Aufspielwerkzeug mit `--neues-passwort`, sonst du auf der Weboberfläche (*Settings → Device settings → Authentication*); den Access Point stellst du selbst ein.
 
 Danach mit Pumpe:
-1. **Pumpe anlernen (Pflicht, sonst bleibt ein Hahn unerkannt, der schon vor dem Start zu ist):** Hahn auf, Stecker einstecken, 10 s warten, dann fünfmal kurz drücken, binnen 10 s (etwa einmal je Sekunde: an, aus, an, aus, an). Das Skript läuft erst rund 3 s nach dem Hochfahren und erkennt Drücke davor nicht sicher. Der fünfte Druck startet das Anlernen, die Pumpe läuft. Wird die LED weiß, gut 1 min nach dem fünften Druck, den Hahn zudrehen, nicht früher: In der Minute misst es die Normalleistung. Gut 20 s nach dem Zudrehen schaltet die Pumpe ab; dreht niemand zu, nach 3 min. Danach ist die LED grün oder gelb, und die Diagnose-Seite zeigt „angelernt“ mit beiden Werten. Ist sie rot oder steht dort nichts, waren die Drücke nicht erkannt oder etwas passte nicht, der Grund steht im Störungsprotokoll: neu einstecken und wiederholen. Ein weiterer Druck bricht ab, ebenso Ausstecken; dann bleibt alles, wie es war. Unter 600 W übernimmt es die Werte nur mit Zudrehen, denn so wenig zieht auch eine trockenlaufende Pumpe. Zu früh zugedreht, lernt es die Hahn-zu-Leistung als normal; jeder Lauf endet dann mit „Überlast“: neu anlernen.
+1. **Pumpe anlernen (Pflicht, sonst bleibt ein Hahn unerkannt, der schon vor dem Start zu ist):** Hahn auf, Stecker einstecken, 10 s warten, dann fünfmal kurz drücken, binnen 10 s (etwa einmal je Sekunde: an, aus, an, aus, an). Das Skript läuft erst rund 3 s nach dem Hochfahren und erkennt Drücke davor nicht sicher. Der fünfte Druck startet das Anlernen, die Pumpe läuft. Wird die LED weiß, gut 1 min nach dem fünften Druck, den Hahn zudrehen, nicht früher: In der Minute misst es die Normalleistung. Gut 20 s nach dem Zudrehen schaltet die Pumpe ab; dreht niemand zu, nach 3 min. Danach ist die LED grün oder gelb, und die Diagnose-Seite zeigt „angelernt“ mit beiden Werten. Ist sie rot, passte etwas nicht; der Grund steht im Störungsprotokoll: neu einstecken und wiederholen. Bleibt die LED 1,5 min nach dem fünften Druck blau, wurde die Geste nicht erkannt, und es läuft eine gewöhnliche Handgabe: einmal drücken, neu einstecken, wiederholen. Ein weiterer Druck bricht das Anlernen ab, ebenso Ausstecken; die Pumpenwerte bleiben dann, wie sie waren, die LED wird rot. Unter 600 W übernimmt es die Werte nur mit Zudrehen, denn so wenig zieht auch eine trockenlaufende Pumpe. Zu früh zugedreht, lernt es die Hahn-zu-Leistung als normal; jeder Lauf endet dann mit „Überlast“: neu anlernen.
 2. **Hahn-zu-Test:** Hahn wieder auf, Taster drücken, den Hahn während des Laufs zudrehen. Nach den ersten 40 s muss die Pumpe binnen etwa 10 s abschalten.
 3. **Becher-Test** für die Regenrate.
 
@@ -124,7 +124,7 @@ In der Shelly-App keine eigenen Zeitpläne zum Schalten des Steckers anlegen. Di
 
 ### Sicherheit
 
-Bedient wird das Skript nur über das Gerät und die Shelly-App. Seine einzige eigene Adresse ist die Diagnose-Seite: Sie zeigt nur, schaltet nichts und steht hinter dem Gerätepasswort. Es ruft nur feste Adressen von Open-Meteo über https auf und prüft die Antworten auf Grenzen. Zu schützen ist das Gerät:
+Bedient wird das Skript nur über das Gerät und die Shelly-App. Seine einzige eigene Adresse ist die Diagnose-Seite: Sie zeigt nur, schaltet nichts und steht hinter dem Gerätepasswort. Es ruft nur feste Adressen von Open-Meteo über https auf und prüft die Antworten auf Länge und Datum; das Bodenkonto bleibt zwischen 0 und 25 mm. Zu schützen ist das Gerät:
 - Ein **Gerätepasswort** setzen, beim Aufspielen mit `--neues-passwort` oder auf der Weboberfläche unter *Settings → Device settings → Authentication*. Ohne Passwort kann jeder im WLAN die Pumpe schalten oder das Skript ersetzen.
 - Das **Shelly-Konto** mit Zwei-Faktor-Anmeldung schützen, wenn die Cloud an ist.
 - Den **Access Point** braucht es im Betrieb nicht. Wird er am Zielort gebraucht: Stecker neu einstecken und binnen 1 min den Knopf 5 s halten, dann sind Access Point und Bluetooth an. Nicht 10 s halten: Das setzt den Stecker auf Werkseinstellung zurück, Skript und Einstellungen sind weg. Abschalten lässt sich dieser Reset nicht, er geht aber nur in der ersten Minute nach dem Einstecken.
@@ -135,13 +135,16 @@ Bedient wird das Skript nur über das Gerät und die Shelly-App. Seine einzige e
 
 | Befehl | prüft |
 | --- | --- |
+| `npm test` | Stapelmodell und alle Szenarien, für Quelltext und Gerätefassung |
 | `npm run build` | Gerätefassung: Zahlen aus Block `C` an ihren Stellen eingesetzt (am Shelly kostet jede Eigenschaft eines Objekts Arbeitsspeicher, so rund 0,85 KB weniger; der Bau prüft, dass `C` nur gelesen wird), nur ASCII, nur ES5, Stapel (nächste Zeile) und eingebaute Methoden. Der Shelly hat ein abgespecktes Espruino; eine fehlende Methode wie `Array.shift` hält das Skript erst beim Aufruf an. Der Bau lässt nur Methoden durch, die am Gerät nachgewiesen sind (Liste in `tools/build.js`). |
 | `node tools/stapel.js [--alle]`, `node emu/stapel-test.js` | Stapelspeicher: Der Shelly hat nur Platz für etwa 15 einfache Aufrufe ineinander, Schleifen und Blöcke kosten mehr. Läuft er über, endet das Skript, mitunter startet der ganze Shelly neu und schaltet den Autostart des Skripts ab. `stapel.js` rechnet für jeden Einstieg (Takt, Rückrufe, Start) den teuersten Weg nach den Kosten, die am Gerät gemessen sind, und verlangt höchstens 70 %; `npm run build` bricht sonst ab. `stapel-test.js` prüft das Modell an den 33 Messungen. |
-| `node emu/scenarios.js [skript]` | 66 Szenarien im Emulator, für Quelltext und Gerätefassung. Der Emulator bildet Relais, Leistung, Firmware-Schutz, Uhr mit Zeitserver, Stromausfall, Speicher, Bedienfeld, Wetterdienst, Ortssuche, Diagnose-Seite und Gerätetemperatur nach und wacht über die Grenzen der Firmware. Die Datumsprüfung der TLS-Zertifikate bildet er nicht nach. |
-| `node emu/zufall.js [skript] [läufe] [tage]` | Zufallstest: wochenlang Stromausfälle, Internet- und Zeitserverausfälle, kaputte Wetterantworten, Pumpenstörungen beim Anlauf und mitten im Lauf, Tastendrücke und Neustarts; prüft Regeln, die immer gelten müssen, etwa jeder Lauf höchstens 120 min und höchstens 12 LED-Wechsel in 24 h |
+| `node emu/scenarios.js [skript]` | 69 Szenarien im Emulator, für Quelltext und Gerätefassung. Der Emulator bildet Relais, Leistung, Firmware-Schutz, Uhr mit Zeitserver, Stromausfall, Speicher, Bedienfeld, Wetterdienst, Ortssuche, Diagnose-Seite und Gerätetemperatur nach und wacht über die Grenzen der Firmware. Die Datumsprüfung der TLS-Zertifikate bildet er nicht nach. |
+| `node emu/zufall.js [skript] [läufe] [tage]` | Zufallstest: wochenlang Stromausfälle, Internet- und Zeitserverausfälle, kaputte Wetterantworten, Pumpenstörungen beim Anlauf und mitten im Lauf, Tastendrücke und Neustarts; prüft Regeln, die immer gelten müssen, etwa jeder Lauf höchstens 120 min und höchstens 12 LED-Wechsel in 24 h (Rot ausgenommen) |
+| `node emu/fuzz.js [skript] [welten] [seed]` | Fuzzer: an jeder Schnittstelle zufällige und feindliche Eingaben, Welt für Welt (1 bis 4 Tage): Wetter- und Ortsantworten kaputt, verspätet, doppelt oder riesig; Firmware-Aufrufe mit Fehlern, ohne Antwort oder mit Ausnahme; Messwerte als Text, `null` oder unendlich; kaputter Speicher; Uhrsprünge, Stromausfälle, Tastendrücke. Prüft dieselben Regeln wie der Zufallstest und dazu Schreibbremsen, Diagnose-Seite, gültigen Zustand und Automatik nur 10:00–12:30 in der Saison. Je Seed gleiches Ergebnis; `FUZZ_WELT=n` spielt eine Welt nach |
 | `sh tools/espruino-run.sh build/bewaesserung.min.js [espruino]` | ein Tag im echten Espruino-Interpreter, auf dem die Shelly-Skriptsprache beruht ([Espruino](https://github.com/espruino/Espruino) für Linux bauen, Pfad als zweites Argument) |
-| `node emu/deploy-test.js`, `emu/browser-deploy-test.js` | Aufspielwerkzeug gegen einen nachgebauten Shelly mit Firmware-Update, https, Passwort und Wächter, per Node und im Browser (braucht Playwright: `npm install --no-save playwright && npx playwright install chromium`) |
+| `node emu/deploy-test.js`, `node emu/browser-deploy-test.js` | Aufspielwerkzeug gegen einen nachgebauten Shelly mit Firmware-Update, https, Passwort und Wächter, per Node und im Browser (braucht Playwright: `npm install --no-save playwright && npx playwright install chromium`) |
 | `node emu/jahreslauf.js src/bewaesserung.js <jahr> <mit\|ohne\|offline> <datei>` | eine ganze Saison mit echtem Wetter (DWD Mannheim 2022–2026) |
+| `NODE_V8_COVERAGE=<ordner> node …`, dann `node tools/abdeckung.js <ordner>` | Abdeckung: welche Zweige des Skripts die Tests erreicht haben (Blöcke, `if`/`else`, `?:`, `&&`, `\|\|`, `catch`); listet jede nie erreichte Stelle. Szenarien, Zufallstest und Fuzzer zusammen erreichen 98,4 % des Codes. Übrig bleiben Schutzcode für Eingaben, die die Firmware nicht liefert, und für Zustände, die nicht eintreten können, sowie Zweige für andere Einstellwerte: Umlaute im Ortsnamen und eingetragene Koordinaten prüfen Szenarien mit abgewandeltem Quelltext, die hier darum nicht mitzählen; eine Saison über den Jahreswechsel (Südhalbkugel) ist nicht geprüft |
 | `python3 tools/jahresvergleich.py` | Vergleich mit einem unabhängigen Bodenmodell nach FAO-56, einem idealen Bodensensor und Zeitschaltuhren |
 | `python3 tools/auswertung/*.py` | Herleitung der Werte für den Betrieb ohne Internet und die Uhr am Tagesgang; welche DWD-Daten sie brauchen, steht im Dateikopf |
 
@@ -151,7 +154,7 @@ Die Saisons 2022 bis 2026 wurden mit dem Wetter der DWD-Station Mannheim gerechn
 
 | Steuerung, Summe 2022–2026 | gegossen | Stresstage | versickert |
 | --- | ---: | ---: | ---: |
-| Skript, Regenprognose trifft | 2.318 mm | 2 | 0 mm |
+| Skript, Regenprognose trifft | 2.318 mm | 2 | 1 mm |
 | Skript, ohne Regenprognose | 2.440 mm | 0 | 0 mm |
 | Skript ganz ohne Internet | 3.930 mm | 1 | 1.332 mm |
 | idealer Bodensensor | 2.397 mm | 0 | 0 mm |
@@ -166,6 +169,7 @@ Das Skript gießt 97 % der Menge eines idealen Bodensensors; seine zwei Stressta
 - **Was noch am echten Gerät zu prüfen ist:** wie viel Leistung die Pumpe bei zugedrehtem Hahn zieht (zeigt das Anlernen); ob die Firmware die fünf Drücke in der ersten Minute ohne eigene Reaktion durchlässt, Shelly dokumentiert für diesen Stecker nur langes Halten (5 s Access Point, 10 s Werksreset); und ob der Wächter-Zeitplan auch ohne Zeitserver läuft, mit der vom Skript gestellten Uhr. Arbeitsspeicher, Diagnose-Seite, Neustart, Autostart und Wächter sind am Gerät geprüft (Outdoor Plug S Gen3, Firmware 2.0.3). Anmelden und Setzen des Gerätepassworts folgen der Shelly-Doku, gelaufen sind sie bisher nur gegen den Nachbau.
 - **Der Arbeitsspeicher ist knapp:** Von 25 186 Byte belegt das Skript nach dem Start rund 16 000. Mit der größten Wetterantwort (15 Tage) und der Diagnose-Seite lag die Spitze am Gerät bei 22 386 Byte; volle Meldungsliste und fünf gespeicherte Störungen kosten zusammen unter 1 KB mehr, im ungünstigsten Fall bleiben also rund 2 KB frei. Reicht er einmal nicht, hält das Skript an, und der Wächter startet es binnen 5 min neu.
 - **Ohne Rückschlagventil** läuft nach jedem Aus die Steigleitung leer; jeder Start füllt sie neu, die ersten 40 s prüft das Skript deshalb nicht auf Unter- und Überlast. Die Geste startet die Pumpe dreimal in wenigen Sekunden; bei 7 m Förderhöhe ist das einmal bei der Inbetriebnahme vertretbar.
+- **Über Winter ausgesteckt und am Standort ohne Internet:** Nach dem Einstecken zählt die Uhr vom letzten Zeitanker weiter, also vom Herbst. Im April hielte das Skript es für November und machte ab seinem „Dezember“ Winterpause, bis in den Sommer. Darum nach dem Winterlager einmal mit Internet einstecken, etwa mit dem Handy-Hotspot als WLAN 2: Der Zeitserver stellt dann das Datum, danach geht es wieder ohne. Bleibt der Stecker über Winter eingesteckt, läuft die Uhr weiter, und es braucht das nicht.
 - **Flackert der Strom** (Neustart alle paar Minuten), schreibt jeder Neustart einmal den Speicher, und die Uhr verliert jedes Mal die Zeit seit dem letzten Schreiben.
 - **Fällt der Strom mitten in einer Gabe aus,** ist der Rest dieser Gabe für den Tag verloren, und bis zu 30 min des Gegossenen fehlen auf dem Konto. Das Konto hält den Boden dann für trockener, als er ist; die nächste Gabe fällt etwas größer aus.
 - **Die Schreibbremse für Einstellungen, Zeitpläne und LED** (30 und 12 je 24 h) gilt je Skriptlauf. Geschrieben wird nur, was abweicht; am Gerät waren es nach dem Start 0.
@@ -177,7 +181,7 @@ Das Skript gießt 97 % der Menge eines idealen Bodensensors; seine zwei Stressta
 
 ## Quellen und Daten
 
-- Wetter: [Open-Meteo](https://open-meteo.com) (CC BY 4.0), Modell [DWD ICON](https://open-meteo.com/en/docs/dwd-api)
+- Wetter: [Open-Meteo](https://open-meteo.com) (CC BY 4.0), automatische Modellwahl, in Deutschland vor allem [DWD ICON](https://open-meteo.com/en/docs/dwd-api)
 - Jahresrechnung: Datenbasis Deutscher Wetterdienst, [Climate Data Center](https://opendata.dwd.de/climate_environment/CDC/)
 - Bodenwasserhaushalt: [FAO Irrigation and Drainage Paper 56](https://www.fao.org/4/x0490e/x0490e00.htm)
 - [Shelly-API-Dokumentation](https://shelly-api-docs.shelly.cloud/gen2/), darin [Anmeldung](https://shelly-api-docs.shelly.cloud/gen2/General/Authentication) und [HTTPServer für Skripte](https://shelly-api-docs.shelly.cloud/gen2/Scripts/APIs/HTTPServer)

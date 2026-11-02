@@ -14,7 +14,7 @@
  *           Klammer 0,5 · Aufruf als Argument 0,75 · && || rechts 0,5 · + rechts 0,5 · ?: 0,25
  *           Zuweisung, return, var 0,25 · Objekt 0,5 · Firmware-Funktion bis 2
  * Die Prüfung rechnet für jeden Einstieg den teuersten Weg und verlangt höchstens ANTEIL des Platzes.
- * Aufruf: node tools/stapel.js [gerätefassung.js] [quelle.js]
+ * Aufruf: node tools/stapel.js [--alle] [gerätefassung.js] [quelle.js]   (--alle: jeden Einstieg einzeln ausgeben)
  */
 const fs = require('fs');
 const path = require('path');

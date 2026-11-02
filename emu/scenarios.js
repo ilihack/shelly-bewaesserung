@@ -1779,6 +1779,248 @@ scenarios.S63_anlernen = function () {
 };
 
 // ------------------------------------------------------------------
+scenarios.S67_funde_zweite_pruefung = function () {
+  // a) Nachlauf behält seinen Abstand, wenn der Zeitserver die Uhr stellt: Router nach Stromausfall weg, Ankeruhr 70 min
+  //    zurück; Automatik bei geschätzt 10:00 (echt 11:10) läuft trocken, Nachlauf "in 60 min"; um 11:20 echt stellt der
+  //    Zeitserver die Uhr, der Brunnen ist um 11:50 wieder voll
+  const st = T(2027, 6, 1, 5, 0);
+  const a = learnedWorld(st);
+  a.storage.s = JSON.stringify(Object.assign(JSON.parse(a.storage.s), { t: Math.floor(st / 1000) - 70 * 60, tu: 9e6,
+    dp: dayNo(T(2027, 5, 31, 12)), d: 14, pc: 818, kt: 1, ob: 14, oa: 14 }));
+  a.internet = false; a.ntp = false;
+  a.run(T(2027, 6, 1, 11, 9)); a.pump.mode = 'dry'; a.run(T(2027, 6, 1, 11, 20));
+  a.internet = true; a.ntp = true; a.run(T(2027, 6, 1, 11, 50)); a.pump.mode = 'normal'; a.run(T(2027, 6, 1, 14, 0));
+  const ar = a.runs();
+  check('S67a Zeitserver stellt die Uhr nach einer Störung: Nachlauf 60 min nach dem Abbruch, nicht sofort', ar.length === 2 &&
+    ar[1].on - ar[0].off >= 55 * M && ar[1].offSrc === 'timer', runsInfo(a));
+  // b) ohne Internet: Handgabe während der scheiternden Tagesprüfung; das Gegossene geht der Nachrechnung nicht verloren
+  const bw = (press) => {
+    const w = learnedWorld(T(2027, 6, 1, 6, 30));
+    w.storage.s = JSON.stringify(Object.assign(JSON.parse(w.storage.s), { dp: dayNo(T(2027, 5, 31, 12)), d: 2, pc: 818, kt: 1, ob: 14, oa: 14 }));
+    w.powerFail(1000); w.run(T(2027, 6, 1, 12, 0)); w.httpFail = true;
+    w.run(press - 1000); w.press(); w.run(T(2027, 6, 3, 23, 0)); w.httpFail = false; w.run(T(2027, 6, 4, 12, 0));
+    return w;
+  };
+  const b1 = bw(T(2027, 6, 3, 10, 0) + 10e3), b2 = bw(T(2027, 6, 3, 9, 50));
+  const auto4 = (w) => w.runs().filter(r => /^2027-06-04/.test(lt(w, r.on)) && r.src === 'loopback').length;
+  check('S67b Handgabe während der Tagesprüfung ohne Internet: am Folgetag kein Zuviel (wie bei Handgabe davor)',
+    auto4(b1) === 0 && auto4(b2) === 0 && b1.runs().length === b2.runs().length, runsInfo(b1) + ' // ' + runsInfo(b2));
+  // c) Bedienfeld unvollständig (eigene Elemente belegen Plätze): Automatik aus und Regenrate gelten trotzdem
+  const c = learnedWorld(T(2027, 6, 1, 6, 30));
+  c.storage.s = JSON.stringify(Object.assign(JSON.parse(c.storage.s), { dp: dayNo(T(2027, 5, 31, 12)), d: 14, pc: 818, kt: 1 }));
+  for (let i = 0; i < 5; i++) c.vc['number:' + (210 + i)] = { type: 'number', id: 210 + i, config: { name: 'eigen' + i, persisted: true, default_value: 0 }, value: 0 };
+  c.powerFail(1000); c.run(T(2027, 6, 1, 7, 0));
+  const c0 = !!c.vc['button:200'];
+  c.setVc('boolean:200', false); c.run(T(2027, 6, 1, 12, 40));
+  const cRuns = c.runs().length;
+  c.setVc('boolean:200', true); c.setVc('number:202', 15); c.run(T(2027, 6, 2, 12, 40));
+  const c2 = c.runs()[0];
+  check('S67c Bedienfeld unvollständig: Automatik aus gilt, Regenrate 15 mm/h gilt (Gabe kürzer)', !c0 && cRuns === 0 && c2 &&
+    c2.min < minFor(14) * 0.7, (c0 ? 'Knopf da ' : 'Knopf fehlt ') + cRuns + ' Läufe am 1.6. · ' + runsInfo(c));
+  common(a, 'S67a'); common(b1, 'S67b'); common(b2, 'S67b2'); common(c, 'S67c');
+};
+
+// ------------------------------------------------------------------
+scenarios.S68_funde_fuzzer = function () {
+  // Funde des Fuzzers (emu/fuzz.js), je als kleinste Probe; vorher: Gabe 06:01, Startliste 3600 je Stunde, Diagnose 500 usw.
+  const SRC = !/min\.js$/.test(FILE);      // Innereien (R) nur in der Quelltextfassung lesbar
+  const stOf = (w, o) => { w.storage.s = JSON.stringify(Object.assign(JSON.parse(w.storage.s), o)); };
+  const day = (y, m, d) => dayNo(T(y, m, d, 12));
+  const errLog = (w) => w.logs.filter((l) => /Fehler (Takt|Plan|im Rückruf|Anzeige|Speicher|Wetterantwort|Bedienfeld)/.test(l.msg)).map((l) => l.msg).join(' | ');
+  // a) gespeicherte Nachprüfung von heute (Regen), Skriptstart 06:00 (etwa Uhr zurückgestellt, dann Stromausfall)
+  const a = learnedWorld(T(2027, 6, 15, 6, 0));
+  stOf(a, { dp: day(2027, 6, 14), d: 14, ev: day(2027, 6, 15), rc: day(2027, 6, 15), rk: 2 });
+  a.powerFail(1000); a.run(T(2027, 6, 15, 12, 40));
+  const ar = a.runs();
+  check('S68a Nachprüfung von heute, Skriptstart 06:00: gegossen erst um 10:00', ar.length === 1 && berlinParts(ar[0].on).hh === 10 &&
+    berlinParts(ar[0].on).mm < 5, runsInfo(a));
+  // b) gespeicherter Nachlauf von heute mit Termin 06:30: läuft um 10:00, nicht früher
+  const b = learnedWorld(T(2027, 6, 15, 6, 0));
+  stOf(b, { dp: day(2027, 6, 14), d: 14, ev: day(2027, 6, 15), fd: day(2027, 6, 15), fc: 1, rt: Math.floor(T(2027, 6, 15, 6, 30) / 1000), rm: 8 });
+  b.powerFail(1000); b.run(T(2027, 6, 15, 12, 40));
+  const br = b.runs();
+  check('S68b Nachlauf von heute mit Termin 06:30: startet um 10:00', br.length === 1 && berlinParts(br[0].on).hh === 10 && br[0].offSrc === 'timer' &&
+    br[0].min > 50, runsInfo(b));
+  // c) aufgeschobener Start und Uhr: Zeitanker 8 h vor, Prüfung bei geschätzt 10:00 (echt 02:00), Einschalten abgelehnt,
+  //    dann stellt der Zeitserver die Uhr auf 02:12: kein Start in der Nacht
+  const c0 = T(2027, 6, 15, 2, 0), c = learnedWorld(c0);
+  stOf(c, { dp: day(2027, 6, 14), d: 14, t: Math.floor(c0 / 1000) + 8 * 3600, tu: 0, ce: 1, cs: Math.floor(c0 / 1000) + 8 * 3600 });
+  c.internet = false; c.ntp = false; c.switchRefuse = 1e9;
+  c.powerFail(1000); c.run(T(2027, 6, 15, 2, 12));
+  c.switchRefuse = 0; c.internet = true; ntpNow(c); c.run(T(2027, 6, 16, 12, 40));
+  const cr = c.runs();
+  check('S68c aufgeschobener Start, dann stellt der Zeitserver die Uhr auf 02:12: kein Start in der Nacht, nächster Lauf 10:00',
+    logHas(c, /Einschalten abgelehnt/) && cr.length >= 1 && cr.every((r) => berlinParts(r.on).hh === 10), runsInfo(c));
+  // d) Winterpause: gespeicherte Nachprüfung und Nachlauf vom 28.02. gießen nicht
+  const d = learnedWorld(T(2027, 2, 28, 9, 0));
+  stOf(d, { dp: day(2027, 2, 27), d: 14, ev: day(2027, 2, 28), rc: day(2027, 2, 28), rk: 2, fd: day(2027, 2, 28), fc: 1,
+    rt: Math.floor(T(2027, 2, 28, 10, 30) / 1000), rm: 8 });
+  d.powerFail(1000); d.run(T(2027, 2, 28, 13, 0));
+  check('S68d 28.02.: gespeicherte Nachprüfung und Nachlauf von heute gießen nicht', d.runs().length === 0 && d.state().rt === 0, runsInfo(d));
+  // e) zehn Starts in der Stunde, dann schaltet die App ein und jedes Aus geht verloren: die Startliste wächst nicht
+  //    (vorher je Takt ein Eintrag); kommt ein Aus an, ist die Pumpe aus
+  const e = learnedWorld(T(2027, 6, 15, 13, 0));
+  stOf(e, { dp: day(2027, 6, 14), ev: day(2027, 6, 15) });
+  e.powerFail(1000); e.run(T(2027, 6, 15, 14, 0));
+  for (let i = 0; i < 10; i++) { e.press(); e.runFor(5e3); e.press(); e.runFor(130e3); }
+  e.offLost = 1e9; e.setOutput(true, 'app', null); e.runFor(10 * M);
+  const eN = SRC ? e.dev.ctx.R.starts.length : 0;
+  e.offLost = 0; e.runFor(10e3);
+  check('S68e Aus geht verloren, die App schaltet ein: Startliste bleibt klein; kommt ein Aus an, ist die Pumpe aus', eN <= 11 && !e.dev.output &&
+    logHas(e, /Zu viele Starts/), 'Startliste ' + (SRC ? eN : '-') + ', Relais ' + e.dev.output);
+  // f) Störungsprotokoll kaputt (Zahlen, null, Text, Objekt): Diagnose-Seite antwortet; war es ein Text, wird die nächste
+  //    Störung trotzdem eingetragen und der Nachlauf geplant
+  const fs4 = ['[1,2,3]', '[null]', '"abc"', '{"length":2}'].map((x) => {
+    const w = learnedWorld(T(2027, 6, 15, 13, 0)); w.storage.f = x; w.powerFail(1000); w.runFor(2 * M); return w;
+  });
+  check('S68f Störungsprotokoll kaputt: Diagnose-Seite antwortet (200)', fs4.every((w) => w.endpoint('info').code === 200),
+    fs4.map((w) => w.endpoint('info').code).join(','));
+  const f = learnedWorld(T(2027, 6, 15, 9, 0));
+  stOf(f, { dp: day(2027, 6, 14), d: 14 });
+  f.storage.f = '"abc"'; f.powerFail(1000); f.run(T(2027, 6, 15, 10, 2));
+  f.pump.mode = 'dry'; f.runFor(3 * M); f.pump.mode = 'normal'; f.run(T(2027, 6, 15, 12, 40));
+  const ff = JSON.parse(f.storage.f || '[]');
+  check('S68f2 Störungsprotokoll war ein Text: Störung eingetragen, Nachlauf gibt den Rest', f.runs().length === 2 && f.runs()[1].offSrc === 'timer' &&
+    ff.length === 1 && /unterlast/.test(ff[0]) && !errLog(f), runsInfo(f) + ' · ' + f.storage.f + ' · ' + errLog(f));
+  // g) beim Start wirft ein Firmware-Aufruf (RPC-Grenze): Diagnose-Seite und Anlern-Geste sind trotzdem da, der Wächter
+  //    kommt mit dem nächsten Plan-Durchlauf
+  const g = kalWorld();
+  g.throwOnce = 'Schedule.List';
+  presses(g, 5, 10, 1.5); g.runFor(40e3);
+  check('S68g Aufruf wirft beim Start: Diagnose-Seite, Anlern-Geste und Wächter sind da', g.throwOnce === null && logHas(g, /Fehler Start/) &&
+    g.endpoint('info').code === 200 && /^Anlernen/.test(g.vcText()) && !!wdJob(g), g.vcText() + ' · ' + g.endpoint('info').code);
+  // h) ein einziger Leistungswert Infinity, Text oder null im Lauf: ein späterer Trockenlauf fällt trotzdem auf
+  const hs = [Infinity, '1320', null].map((bad) => {
+    const w = learnedWorld(T(2027, 6, 15, 9, 0));
+    stOf(w, { dp: day(2027, 6, 14), d: 14 });
+    w.powerFail(1000); w.run(T(2027, 6, 15, 10, 5));
+    const sh = w.dev.ctx.Shelly, o = sh.getComponentStatus;
+    let n = 1;
+    sh.getComponentStatus = (t, i) => { const s = o(t, i); if (t === 'switch' && n-- > 0) return Object.assign({}, s, { apower: bad }); return s; };
+    w.runFor(5 * M); w.pump.mode = 'dry'; const td = w.t; w.runFor(2 * M);
+    const tr = w.logs.find((l) => l.t > td && /Schutz: unterlast/.test(l.msg));
+    return tr ? (tr.t - td) / 1000 : null;
+  });
+  check('S68h Leistungswert einmal Infinity, Text, null: späterer Trockenlauf binnen 20 s erkannt', hs.every((x) => x !== null && x < 20), hs.join(' / '));
+  // i) Zustand mit fremdem Feld (ältere Fassung, 600 Zeichen): fällt beim Laden weg, der Speicher schreibt weiter
+  const iw = learnedWorld(T(2027, 6, 15, 9, 0));
+  stOf(iw, { dp: day(2027, 6, 14), d: 14, alt: 'x'.repeat(600) });
+  iw.powerFail(1000); iw.run(T(2027, 6, 16, 12, 0)); iw.powerFail(60e3); iw.run(T(2027, 6, 17, 12, 0));
+  check('S68i fremdes Feld im Zustand: fällt weg, Speicher schreibt weiter', !/alt/.test(iw.storage.s) && iw.storage.s.length < 900 &&
+    !/Speicher schreibt nicht/.test(iw.vcText()) && iw.runs().length === 1 && iw.storageWrites.length >= 5,
+    iw.storage.s.length + ' Byte, ' + iw.storageWrites.length + ' Schreibvorgänge · ' + iw.vcText());
+  // j) angelernte Leistung 1e400 (JSON.parse: Infinity): gilt als nicht angelernt, die Gabe läuft ohne Fehlauslösung
+  const j = learnedWorld(T(2027, 6, 15, 9, 0));
+  stOf(j, { dp: day(2027, 6, 14), d: 14 });
+  j.storage.s = j.storage.s.replace('"pn":1320', '"pn":1e400');
+  const jIn = /"pn":1e400/.test(j.storage.s);
+  j.powerFail(1000); j.run(T(2027, 6, 15, 12, 40));
+  check('S68j angelernte Leistung 1e400: Voreinstellung, Gabe läuft durch', jIn &&
+    j.runs().length === 1 && j.runs()[0].offSrc === 'timer' && !logHas(j, /Schutz/) && j.state().pn === 0, runsInfo(j) + ' pn=' + j.state().pn);
+  // k) geschätzte Tage mit Texten statt Zahlen (xw): Korrektur verworfen, das Konto bleibt eine Zahl, die Gabe läuft
+  const k = learnedWorld(T(2027, 6, 15, 9, 0));
+  stOf(k, { dp: day(2027, 6, 14), d: 14, xa: day(2027, 6, 13), xe: [3, 3], xw: ['a', 'b'], xd: 8 });
+  k.powerFail(1000); k.run(T(2027, 6, 15, 12, 40));
+  const ks = k.state();
+  check('S68k Texte in der Korrektur (xw): verworfen, Konto eine Zahl, Gabe läuft', k.runs().length === 1 && typeof ks.d === 'number' &&
+    ks.xa === -1 && /Automatik/.test(ks.lr), runsInfo(k) + ' · d=' + ks.d + ' xa=' + ks.xa);
+  // l) Firmware-Antworten in fremder Form: Zeitplanliste mit null und Zahl, Fehlerliste als Text, Gruppenwert ohne join
+  const l = learnedWorld(T(2027, 6, 15, 9, 0));
+  stOf(l, { dp: day(2027, 6, 14), d: 14 });
+  l.fuzz = (ctx) => {
+    const sh = ctx.Shelly, oc = sh.call, os = sh.getComponentStatus;
+    sh.call = function (m, p, cb, ud) {
+      if (m !== 'Schedule.List' || typeof cb !== 'function') return oc.call(sh, m, p, cb, ud);
+      return oc.call(sh, m, p, function (res, err, msg, u) { return cb(res ? { jobs: [null, 5].concat(res.jobs || []) } : res, err, msg, u); }, ud);
+    };
+    sh.getComponentStatus = function (t, i) {
+      const s = os.call(sh, t, i);
+      if (t === 'group' && s) return Object.assign({}, s, { value: { length: 6 } });
+      if (t === 'switch' && s && s.errors && s.errors.length) return Object.assign({}, s, { errors: String(s.errors) });
+      return s;
+    };
+  };
+  l.powerFail(1000); l.run(T(2027, 6, 15, 10, 1));
+  l.pump.mode = 'blocked'; l.runFor(M); l.pump.mode = 'normal'; l.run(T(2027, 6, 15, 12, 40));
+  check('S68l fremde Antwortformen (Zeitplanliste mit null, Fehlerliste als Text, Gruppenwert ohne join): kein Fehler, Wächter da, ' +
+    'Störung eingetragen', !errLog(l) && !!wdJob(l) && /Firmware-Schutz: overcurrent/.test(l.state().ft) && l.runs().length === 2,
+    errLog(l) + ' · ' + l.state().ft + ' · ' + runsInfo(l));
+  [a, b, c, d, e, f, g, iw, j, k, l].concat(fs4).forEach((x, n) => common(x, 'S68-' + n));
+};
+
+// ------------------------------------------------------------------
+scenarios.S69_seltene_wege = function () {
+  // Wege, die sonst kein Test erreichte (Abdeckung): Uhr am Tagesgang nicht stellbar, klebendes Relais und Startgrenze vor
+  // einem Automatikstart
+  // a) wie S34a; das erste Stellen am Tagesgang scheitert: Schätzung bleibt, nächster Versuch frühestens nach 20 h, klappt
+  const wx = () => ({ et0: 4.5, rain: 0, prob: 0, tmin: 10, tmax: 28 });
+  const a = mkWorld(T(2027, 6, 1, 0, 0), { weather: wx });
+  a.run(T(2027, 6, 4, 1, 0)); a.internet = false; a.powerFail(4 * H);
+  a.run(T(2027, 6, 4, 5, 10)); a.setTimeFail = 1; a.run(T(2027, 6, 9, 0, 0));
+  const nf = a.logs.filter((l) => /Uhr nicht stellbar/.test(l.msg)), fx = a.logs.filter((l) => /Uhr nach Tagesgang/.test(l.msg));
+  check('S69a Stellen am Tagesgang scheitert: gemeldet, nächster Versuch nach mindestens 20 h klappt', a.setTimeFail === 0 && nf.length === 1 &&
+    fx.length >= 1 && fx[0].t - nf[0].t >= 20 * H, nf.concat(fx).map((l) => lt(a, l.t) + ' ' + l.msg).join(' | '));
+  // b) Relais klebt vor 10:00 (Pumpe läuft trotz Aus): keine Automatik; ist es wieder frei, startet die Gabe noch am Vormittag
+  const b = learnedWorld(T(2027, 6, 15, 6, 0));
+  b.storage.s = JSON.stringify(Object.assign(JSON.parse(b.storage.s), { dp: dayNo(T(2027, 6, 14, 12)), d: 14 }));
+  b.powerFail(1000); b.run(T(2027, 6, 15, 9, 50)); b.pump.weld = true; b.run(T(2027, 6, 15, 10, 30));
+  const bOn = b.relay.filter((x) => x.on && x.src === 'loopback').length, bTxt = b.vcText();
+  b.pump.weld = false; b.run(T(2027, 6, 15, 12, 40));
+  const br = b.runs().filter((r) => r.src === 'loopback');
+  check('S69b Relais klebt um 10:00: kein Einschalten, Störung angezeigt; wieder frei: Gabe vor 12:00', bOn === 0 && /Relais klebt/.test(bTxt) &&
+    br.length === 1 && br[0].on < T(2027, 6, 15, 12, 0) && br[0].on > T(2027, 6, 15, 10, 30), bTxt + ' · ' + runsInfo(b));
+  // c) zehn Handstarts zwischen 09:30 und 09:52: die Automatik um 10:00 wartet, bis der erste Start eine Stunde her ist
+  const c = learnedWorld(T(2027, 6, 15, 6, 0));
+  c.storage.s = JSON.stringify(Object.assign(JSON.parse(c.storage.s), { dp: dayNo(T(2027, 6, 14, 12)), d: 14 }));
+  c.powerFail(1000); c.run(T(2027, 6, 15, 9, 30));
+  const c1 = c.t;
+  for (let i = 0; i < 10; i++) { c.press(); c.runFor(5e3); c.press(); c.runFor(130e3); }
+  c.run(T(2027, 6, 15, 12, 40));
+  const ca = c.runs().filter((r) => r.src === 'loopback');
+  check('S69c zehn Handstarts vor 10:00: Automatik startet erst, wenn der erste eine Stunde her ist', ca.length === 1 && ca[0].on >= c1 + H &&
+    ca[0].on <= c1 + H + 60e3 && ca[0].offSrc === 'timer', runsInfo(c));
+  // d) frisches Gerät ohne Internet, Hahn gleich beim Weißwerden zugedreht: Anlernen fertig, bevor die Uhrzeit angenommen
+  //    ist (2 min nach dem Start); übernommen mit „Zeit unbekannt“
+  const d = mkWorld(T(2027, 5, 15, 14, 0));
+  d.storage = {}; d.internet = false; d.ntp = false; d.powerFail(1000); d.runFor(1500);
+  presses(d, 5, 10, 1.5); kalZu(d, 63); d.runFor(3 * M);
+  const ds = d.state();
+  check('S69d Anlernen fertig, bevor die Uhrzeit angenommen ist: übernommen, Zeitpunkt unbekannt', Math.abs(ds.pn - 1320) <= 20 &&
+    ds.pc > 0 && ds.kt === 1 && logHas(d, /Angelernt/) && logHas(d, /Einstecken gilt als 1. April/), JSON.stringify({ pn: ds.pn, pc: ds.pc, kt: ds.kt }) + ' · ' + kalLog(d));
+  // e) Zeitanker 70 min zurück, Internet ohne Zeitserver; während des Wetterabrufs (45 s) stellt der Zeitserver die Uhr:
+  //    die Antwort gilt nicht (Tage könnten falsch sein), neuer Abruf mit richtiger Uhr, dann gegossen
+  const e0 = T(2027, 6, 1, 5, 0), e = learnedWorld(e0);
+  e.storage.s = JSON.stringify(Object.assign(JSON.parse(e.storage.s), { t: Math.floor(e0 / 1000) - 70 * 60, tu: 9e6,
+    dp: dayNo(T(2027, 5, 31, 12)), d: 14 }));
+  const isWx = (h) => /v1\/forecast/.test(h.url) && /past_days/.test(h.url);
+  e.ntp = false; e.httpLat = (url) => (/past_days/.test(url) ? 45e3 : 400);
+  e.powerFail(1000); runUntil(e, () => e.http.some(isWx), 8 * H);
+  e.runFor(5e3); ntpNow(e); e.run(T(2027, 6, 1, 14, 0));
+  const ew = e.http.filter(isWx), er = e.runs();
+  check('S69e Zeitserver stellt die Uhr während des Wetterabrufs: Antwort verworfen, neu abgerufen, danach gegossen', ew.length === 2 &&
+    er.length === 1 && er[0].on > ew[1].t && er[0].offSrc === 'timer', ew.map((h) => lt(e, h.t)).join(', ') + ' · ' + runsInfo(e));
+  // f) ohne Internet, Uhr am Morgen nach Tagesgang gestellt; am Nachmittag ein zweiter Tiefpunkt (7 h Abkühlung, dann 6 K
+  //    wärmer, etwa nach Regen): binnen 20 h wird nicht nochmal gestellt (sonst sprünge die Uhr um einen halben Tag)
+  const f = mkWorld(T(2027, 6, 1, 0, 0), { weather: wx });
+  const base = (t) => { const k = f.ambient; f.ambient = null; const v = f.ambientAt(t); f.ambient = k; return v; };
+  let fDay = null;
+  f.ambient = (t) => {
+    const p = berlinParts(t), m = p.hh * 60 + p.mm;
+    if (p.date !== fDay || m < 540 || m >= 1080) return base(t);
+    const t9 = berlinToUnixMs(p.y, p.m, p.d, 9, 0), v9 = base(t9);
+    return m < 960 ? v9 - 8 * (m - 540) / 420 : v9 - 8 + 6 * (m - 960) / 120;   // 09:00–16:00 −8 K, bis 18:00 +6 K
+  };
+  f.run(T(2027, 6, 4, 1, 0)); f.internet = false; f.powerFail(4 * H);
+  f.run(T(2027, 6, 5, 3, 0));
+  fDay = berlinParts(f.t).date;           // der Morgen, an dem gestellt wird (05.06.), bekommt den Nachmittags-Tiefpunkt
+  f.run(T(2027, 6, 8, 0, 0));
+  const ff = f.logs.filter((l) => /Uhr nach Tagesgang/.test(l.msg));
+  check('S69f zweiter Tiefpunkt am Nachmittag nach dem Stellen am Morgen: die Uhr bleibt (einmal gestellt, morgens)', ff.length === 1 &&
+    berlinParts(ff[0].t).date === fDay && berlinParts(ff[0].t).hh < 12, ff.map((l) => lt(f, l.t) + ' ' + l.msg).join(' | '));
+  common(a, 'S69a'); common(b, 'S69b'); common(c, 'S69c'); common(d, 'S69d'); common(e, 'S69e'); common(f, 'S69f');
+};
+
+// ------------------------------------------------------------------
 scenarios.S66_hahn_zu_ohne_anlernen = function () {
   // nicht angelernt (600/2100 W): ein im Lauf zugedrehter Hahn fällt am Bezug des Laufs auf (20 % darunter), der Nachlauf
   // mit noch zugedrehtem Hahn ebenso (Bezug des Laufs davor); ein schon vor dem Start zugedrehter Hahn nur mit Anlernen

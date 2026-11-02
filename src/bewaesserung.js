@@ -2,7 +2,8 @@
  * Bewässerung mit Brunnen- oder Gartenpumpe am Shelly Outdoor Plug S Gen3 (Shelly-Skript für Gen2/Gen3)
  * Eingestellt für: Tiefbrunnenpumpe IBO 3,5" SDM 5/14 (1100 W, 7,9 A), 3 Regner Rain Bird 5000, 500 m² Rasen.
  *
- * Was das Skript tut (Begründungen in der Bauanleitung, Kapitel in [Klammern]):
+ * Was das Skript tut (die [Ziffern] verweisen auf Kapitel der Bauanleitung des Projekts, die nicht im Repository liegt;
+ * das Wichtigste daraus steht in der README):
  *  - prüft täglich um START_MIN das Bodenkonto und gießt bei Bedarf; Automatik startet nur bis END_MIN [2]
  *  - rechnet mit Wetterdaten von Open-Meteo; ohne Internet mit Monatsmitteln und der Temperatur des
  *    eigenen Fühlers, korrigiert mit echten Daten, sobald das Internet zurück ist [2]
@@ -10,7 +11,7 @@
  *  - schützt die Pumpe über die gemessene Leistung: Voreinstellung, bis sie per Taster angelernt ist [4]
  *  - Anlernen: einstecken, 10 s warten, 5× drücken binnen 10 s; wird die LED weiß, Hahn zudrehen [4]
  *  - übersteht Stromausfälle: Zeitanker alle 6 h, Uhr am Tagesgang der Temperatur nachgestellt [5]
- *  - Bedienfeld in der Shelly-App: Status, Bodenkonto, Automatik, Pause, Regenrate, Pumpenwerte zurücksetzen [3]
+ *  - Bedienfeld in der Shelly-App: Status, Wasserdefizit, Automatik, Pause, Regenrate, Pumpe neu einlernen [3]
  *  - Diagnose im Browser: http://<IP>/script/<id>/info, mit dem Gerätepasswort [3]
  *
  * Lesehilfe: Einstellungen C, Klima -> Zustand S (gespeichert) und R (nur RAM) -> Helfer, Zeit, Speicher ->
@@ -93,7 +94,8 @@ var C = {
                                  // bevor die Tagesprüfung läuft (der Router braucht nach einem Stromausfall Minuten) [5]
   ANCHOR_S: 21600,               // Zeitanker alle 6 h speichern: 4 Schreibvorgänge am Tag [5]
   WRITES_DAY: 48,                // Schreibbremse Speicher: höchstens 1 je Minute, nach 48 in 24 h 1 je Stunde [5]
-  CFG_DAY: 30,                   // Schreibbremse Bedienfeld und Zeitpläne: höchstens 30 in 24 h; LED hat eigene 12 am Tag,
+  CFG_DAY: 30,                   // Schreibbremse Bedienfeld und Zeitpläne: höchstens 30 in 24 h; LED hat eigene 12 am Tag
+                                 // (Rot und Anlernen ausgenommen),
                                  // die Relais-Sicherungen bremst nichts (höchstens stündlich, nur wenn verstellt) [5]
   RUN_SAVE_S: 1800,              // laufende Gabe halbstündlich gutschreiben: ein Stromausfall im Lauf kostet so höchstens
                                  // eine halbe Stunde Gutschrift
@@ -106,10 +108,11 @@ var ET0_CLIM = [0.6, 0.9, 1.6, 2.6, 3.5, 4.5, 4.4, 3.8, 2.4, 1.1, 0.5, 0.5];   /
 var TMAX_CLIM = [6.1, 9.3, 13.0, 17.0, 21.1, 26.3, 27.4, 27.4, 22.8, 16.7, 9.6, 6.8]; // Tageshöchstwert (°C)
 
 // LED des Steckers (Farben 0..100, volle Helligkeit, auch in der Sonne zu sehen): grün = alles gut, gelb = Daten
-// fehlen (Wetterdienst, Uhr, Ort, Speicher), rot = der letzte Lauf hatte eine Störung (bleibt, bis ein Lauf wieder
-// fehlerfrei war, auch über Neustarts), blau = Pumpe läuft, weiß = beim Anlernen jetzt den Hahn zudrehen. Die Firmware
-// blinkt rot (WLAN, Update) und blau (AP), das Skript leuchtet dauernd. Jede Änderung ist ein Flash-Schreibvorgang: rot
-// nach 2 min Bestand, jede andere Farbe erst nach 30 min, höchstens 12 am Tag; das Anlernen zeigt sich sofort [3]
+// fehlen (Wetterdienst, Uhr, Ort), rot = der letzte Lauf hatte eine Störung (bleibt, bis ein Lauf wieder fehlerfrei war,
+// auch über Neustarts), ebenso Relais klebt oder Speicher schreibt nicht; blau = Pumpe läuft, weiß = beim Anlernen jetzt
+// den Hahn zudrehen. Die Firmware blinkt rot (WLAN, Update) und blau (AP), das Skript leuchtet dauernd. Jede Änderung
+// ist ein Flash-Schreibvorgang: rot nach 2 min Bestand, jede andere Farbe erst nach 30 min, höchstens 12 am Tag (Rot und
+// Anlernen ausgenommen); das Anlernen zeigt sich sofort [3]
 var LED = { ok: [0, 100, 0], warn: [100, 70, 0], err: [100, 0, 0], run: [0, 0, 100], cue: [100, 100, 100] };
 
 // ============================== Zustand ==============================
@@ -147,7 +150,7 @@ var R = {
   pbNext: 0,        // nächster Verbindungstest (Uptime), solange der Wetterdienst fehlte
   cfgAt: 0, sn: 0,   // nächstes Nachstellen von Relais-Einstellungen und Zeitplänen (Uptime); Schritt dabei
   cg: 0,             // Uhr-Generation: zählt jedes Stellen der Uhr; ein Wetterabruf von davor wird verworfen
-  hb: 0, hn: 0, hr: 0, hl: 0, // Bedienfeld: letzter Versuch anzulegen und zu binden (Uptime); Versuche; Taster-Abo; Verluste
+  hb: 0, hn: 0, hr: -1, hl: 0, // Bedienfeld: letzter Versuch anzulegen und zu binden (Uptime); Versuche; Taster-Abo; Verluste
   led: "", ledOn: "", ledWant: "", ledSince: 0, ledN: [], lx: 0, cue: 0, // LED aus/im Lauf; lx: Anlernen gleich zeigen,
                                                                           // ohne Wartezeit; cue: im Lauf weiß (Hahn zu)
   td: null, ty: null, ts: -1e9, // Gerätetemperatur heute / gestern {d, n, mn, mx}, letzte Messung
@@ -168,10 +171,17 @@ function r1(x) { return Math.round(x * 10) / 10; }
 function r2(x) { return Math.round(x * 100) / 100; }
 function f1(x) { var v = Math.round(x * 10) / 10; return String(v).replace(".", ","); }   // Anzeige mit Dezimalkomma
 function lim(x, a, b) { return x < a ? a : (x > b ? b : x); }
+function fin(x) { return typeof x === "number" && x - x === 0; }   // endliche Zahl: aus 1e400 macht JSON.parse Infinity
+function nz(x) { return typeof x === "number" && x - x === 0 ? x : 0; }   // Messwert, sonst 0 (gilt als "zieht nichts")
+function jlen(t) {                        // Länge im Speicher: Espruino schreibt jedes Byte ab 0x80 als \u00XX
+  var n = t.length, i = 0;
+  while (i < t.length) { if (t.charCodeAt(i) > 127) n += 5; i++; }
+  return n;
+}
 function p2(n) { return (n < 10 ? "0" : "") + n; }
 function log(t) {                         // Konsole und die letzten 6 Meldungen für die Diagnose (nur RAM). Uhrzeit roh
-  var k = R.u > 1e9 ? Math.floor(R.u) : 0, j = R.lg[(R.li + 5) % 6];   // aus dem Takt (R.u), ~ für geschätzt, Text;
-  t = String(t); print("[BW] " + t);      // lesbar erst in info(): log() wird überall gerufen und muss flach bleiben
+  var k = R.u > 1e9 && R.u < 1e10 ? Math.floor(R.u) : 0, j = R.lg[(R.li + 5) % 6];   // aus dem Takt (R.u, 10 Ziffern),
+  t = String(t); print("[BW] " + t);      // ~ für geschätzt, Text; lesbar erst in info(): log() muss flach bleiben
   if (j && j.slice(11) === t.slice(0, 80)) return;   // Wiederholung der letzten Meldung: nur in die Konsole
   k = (k ? String(k) : "0000000000") + (R.est ? "~" : " ") + t.slice(0, 80);
   if (R.lg.length < 6) R.lg.push(k); else R.lg[R.li] = k;   // Ring statt shift(): shift() fehlt dem Shelly
@@ -180,7 +190,7 @@ function log(t) {                         // Konsole und die letzten 6 Meldungen
 function sw() { return Shelly.getComponentStatus("switch", 0) || {}; }   // im Takt; sonst R.sw, der Stand dieses Takts
 function swKeep(st) {                     // das Nötige davon in R.sw, ohne neues Objekt
   var c = st.temperature;
-  R.sw.output = !!st.output; R.sw.apower = st.apower || 0; R.sw.tC = c && typeof c.tC === "number" ? c.tC : null;
+  R.sw.output = !!st.output; R.sw.apower = nz(st.apower); R.sw.tC = c && fin(c.tC) ? c.tC : null;
 }
 function cbNone(res, err, msg) { if (err) log("RPC-Fehler " + err + " " + msg); }
 // Ein Fehler in einem Rückruf beendet ein Shelly-Skript (der Wächter startet es erst nach bis zu 5 min neu). Darum
@@ -244,60 +254,77 @@ function ntpSet() {                       // Zeitserver hat gestellt (nicht unse
 }
 
 // ============================== Speicher ==============================
-function load() {
-  var v = null, g = null;
+function load() {                         // übernimmt nur bekannte Felder mit passendem Typ und endlichen Zahlen: Fremdes
+  var v = null, g = null, k, i, D = {     // (ältere Fassung) fiele sonst nie weg, S würde zu groß zum Schreiben
+    v: 1,
+    t: 0,     // Zeitanker
+    d: 0,     // Bodendefizit am Ende des letzten verbuchten Tages
+    dp: -1,   // letzter verbuchter Tag
+    pi: 0,    // seither gegossen (mm)
+    ev: -1,   // Tag der letzten Tagesprüfung
+    pn: 0,    // angelernte Normalleistung (W), 0 = Voreinstellung
+    pc: 0,    // angelernte Leistung bei zugedrehtem Hahn (W), 0 = keine
+    kt: 0,    // angelernt am (Unixzeit, 1 = Zeit unbekannt)
+    pu: 0,    // Pause bis einschließlich Tag
+    fd: -1,   // Tag der Störungszählung
+    fc: 0,    // Störungen an diesem Tag
+    rt: 0,    // Nachlauf ab Unixzeit
+    rm: 0,    // Nachlauf-Menge (mm)
+    rq: 0,    // Nachlauf: Bezugsleistung des abgebrochenen Laufs (W)
+    lr: "",   // letzter Lauf, für die Anzeige
+    xa: -1,   // erster Tag, der ohne Internet geschätzt verbucht wurde; dazu (unten) xe: die Schätzungen dieser Tage (mm),
+    xd: 0,    // xw: das davor Gegossene. xd: Konto vor dem ersten geschätzten Tag, die Korrektur rechnet von hier neu
+    ob: -99,  // gelernte Eigenwärme beim Tiefstwert (K), -99 = noch nicht
+    oa: -99,  // gelernte Eigenwärme beim Höchstwert (K)
+    df: 0,    // 1 = Uhrzeit beruht auf der Annahme 1. April 10:00
+    rd: -1,   // Tag, an dem die Regenprognose die Gabe gekürzt hat
+    rx: 0,    // dabei erwarteter Regen (mm)
+    rc: -1,   // Tag, an dem Regen oder Frost die Gabe verhindert hat: stündlich nachsehen
+    rk: 0,    // warum: 1 Frost laut Prognose, 3 Frost geschätzt, 2 Regen
+    rf: 0,    // Tiefstwert dieser Frostnacht (°C)
+    tu: 0,    // Laufzeit des Geräts beim Zeitanker (s): Skript-Neustart erkennen
+    ce: 0,    // 1 = Geräteuhr vom Skript geschätzt, Zeitserver hat sie seither nicht gestellt
+    cs: 0,    // zuletzt vom Skript gestellte Uhrzeit, vom Zeitserver zu unterscheiden
+    fu: 0,    // letzte Störung (Unixzeit, 1 = Zeit unbekannt)
+    ft: "",   // ihr Text
+    fo: 0,    // 1 = noch offen: LED rot, bis ein Lauf fehlerfrei war (fehlt der Wert: offen, wenn es eine Störung gab)
+    s0: 0,    // Saison seit (Tag), für die Diagnose; dazu Läufe Automatik und Nachlauf, Handgaben, gegebene mm, Störungen
+    sa: 0, sh: 0, sm: 0, sf: 0,
+    io: 0,    // letzter Ausfall des Wetterdienstes: Beginn (Unixzeit), Dauer (min)
+    id: 0,
+    os: 0,    // Wetterdienst fehlt seit (Unixzeit, 1 = Zeit unbekannt), übersteht Neustarts
+    wu: 0,    // Schreibbremse über Skript-Neustarts: Laufzeit beim letzten Schreiben (s), Anzahl im Fenster, Fensterbeginn
+    wn: 0, wb: 0,
+    la: null, lo: null, pz: ""   // Ort: Koordinaten und wofür sie gelten (unten geprüft)
+  };
   try { g = Script.storage.getItem("s"); v = JSON.parse(g); } catch (e) { v = null; }
-  if (!v || v.v !== 1) { if (g) log("Speicher unlesbar, Voreinstellungen"); v = { v: 1 }; }
-  if (typeof v.t !== "number") v.t = 0;     // Zeitanker
-  if (typeof v.d !== "number" || !(v.d >= 0 && v.d <= C.D_MAX_MM)) v.d = 0;   // Bodendefizit am Ende des letzten verbuchten Tages
-  if (typeof v.dp !== "number") v.dp = -1;  // letzter verbuchter Tag
-  if (typeof v.pi !== "number" || !(v.pi >= 0)) v.pi = 0;   // seither gegossen (mm)
-  if (typeof v.ev !== "number") v.ev = -1;  // Tag der letzten Tagesprüfung
-  if (typeof v.pn !== "number") v.pn = 0;   // angelernte Normalleistung (W), 0 = Voreinstellung
-  if (typeof v.pc !== "number") v.pc = 0;   // angelernte Leistung bei zugedrehtem Hahn (W), 0 = keine
-  if (typeof v.kt !== "number") v.kt = 0;   // angelernt am (Unixzeit, 1 = Zeit unbekannt)
-  if (typeof v.pu !== "number") v.pu = 0;   // Pause bis einschließlich Tag
-  if (typeof v.fd !== "number") v.fd = -1;  // Tag der Störungszählung
-  if (typeof v.fc !== "number") v.fc = 0;   // Störungen an diesem Tag
-  if (typeof v.rt !== "number") v.rt = 0;   // Nachlauf ab Unixzeit
-  if (typeof v.rm !== "number") v.rm = 0;   // Nachlauf-Menge (mm)
-  if (typeof v.rq !== "number") v.rq = 0;   // Nachlauf: Bezugsleistung des abgebrochenen Laufs (W)
-  if (typeof v.lr !== "string") v.lr = "";  // letzter Lauf, für die Anzeige
-  if (typeof v.xa !== "number") v.xa = -1;  // erster Tag, der ohne Internet geschätzt verbucht wurde
-  if (!v.xe || typeof v.xe.length !== "number") v.xe = [];  // die Schätzungen dieser Tage (mm), für die Korrektur
-  if (!v.xw || typeof v.xw.length !== "number" || v.xw.length !== v.xe.length) { v.xw = []; v.xe = []; v.xa = -1; }  // davor gegossen
-  if (typeof v.xd !== "number") v.xd = 0;   // Konto vor dem ersten geschätzten Tag: die Korrektur rechnet von hier neu
-  if (typeof v.ob !== "number") v.ob = -99; // gelernte Eigenwärme beim Tiefstwert (K), -99 = noch nicht
-  if (typeof v.oa !== "number") v.oa = -99; // gelernte Eigenwärme beim Höchstwert (K)
-  if (typeof v.df !== "number") v.df = 0;   // 1 = Uhrzeit beruht auf der Annahme 1. April 10:00
-  if (typeof v.rd !== "number") v.rd = -1;  // Tag, an dem die Regenprognose die Gabe gekürzt hat
-  if (typeof v.rx !== "number") v.rx = 0;   // dabei erwarteter Regen (mm)
-  if (typeof v.rc !== "number") v.rc = -1;  // Tag, an dem Regen oder Frost die Gabe verhindert hat: stündlich nachsehen
-  if (typeof v.rk !== "number") v.rk = 0;   // warum: 1 Frost laut Prognose, 3 Frost geschätzt, 2 Regen
-  if (typeof v.rf !== "number") v.rf = 0;   // Tiefstwert dieser Frostnacht (°C)
-  if (typeof v.tu !== "number") v.tu = 0;   // Laufzeit des Geräts beim Zeitanker (s): Skript-Neustart erkennen
-  if (typeof v.ce !== "number") v.ce = 0;   // 1 = Geräteuhr vom Skript geschätzt, Zeitserver hat sie seither nicht gestellt
-  if (typeof v.cs !== "number") v.cs = 0;   // zuletzt vom Skript gestellte Uhrzeit, vom Zeitserver zu unterscheiden
-  if (typeof v.fu !== "number") v.fu = 0;   // letzte Störung (Unixzeit, 1 = Zeit unbekannt)
-  if (typeof v.ft !== "string") v.ft = "";  // ihr Text
-  if (typeof v.fo !== "number") v.fo = v.fu ? 1 : 0;   // 1 = noch offen: LED rot, bis ein Lauf fehlerfrei war
-  if (typeof v.s0 !== "number") v.s0 = 0;   // Saison seit (Tag), für die Diagnose; dazu Läufe Automatik und Nachlauf,
-  if (typeof v.sa !== "number") v.sa = 0;   // Handgaben, gegebene mm und Störungen
-  if (typeof v.sh !== "number") v.sh = 0;
-  if (typeof v.sm !== "number") v.sm = 0;
-  if (typeof v.sf !== "number") v.sf = 0;
-  if (typeof v.io !== "number") v.io = 0;   // letzter Ausfall des Wetterdienstes: Beginn (Unixzeit), Dauer (min)
-  if (typeof v.id !== "number") v.id = 0;
-  if (typeof v.os !== "number") v.os = 0;   // Wetterdienst fehlt seit (Unixzeit, 1 = Zeit unbekannt), übersteht Neustarts
-  if (typeof v.wu !== "number") v.wu = 0;   // Schreibbremse über Skript-Neustarts: Laufzeit beim letzten Schreiben (s),
-  if (typeof v.wn !== "number") v.wn = 0;   // Anzahl im Fenster
-  if (typeof v.wb !== "number") v.wb = 0;   // und Fensterbeginn (Laufzeit, s)
-  if (v.pz !== C.LAND + C.ORT || typeof v.la !== "number" || typeof v.lo !== "number") {   // Ort neu bestimmen
-    v.la = null; v.lo = null; v.pz = "";
+  if (!v || v.v !== 1) { if (g) log("Speicher unlesbar, Voreinstellungen"); v = {}; }
+  for (k in D) {                          // Zahlen nur in sinnvoller Größe, gerundet: so bleibt S unter 1024 Byte
+    if (typeof v[k] !== typeof D[k]) continue;
+    if (typeof D[k] === "string") D[k] = v[k]; else if (fin(v[k]) && Math.abs(v[k]) < 1e10) D[k] = r2(v[k]);
   }
-  S = v;
+  if (!(D.d >= 0 && D.d <= C.D_MAX_MM)) D.d = 0;
+  if (!(D.pi >= 0)) D.pi = 0;
+  if (!(D.pn >= C.P_LEARN_MIN && D.pn <= C.P_LEARN_MAX)) D.pn = 0;   // nur, was das Anlernen übernehmen kann
+  if (!(D.pc >= 0 && D.pc < D.pn)) D.pc = 0;
+  if (!fin(v.fo)) D.fo = D.fu ? 1 : 0;
+  if (jlen(D.lr) > 80) D.lr = "";        // Anzeigetexte: so lang (im Speicher) schreibt das Skript sie höchstens;
+  if (jlen(D.ft) > 140) D.ft = "";       // längere sprengten mit dem Rest die 1024 Byte
+  g = v.xe; k = v.xw; D.xe = []; D.xw = [];   // je Tag eine Zahl, beide gleich lang, höchstens 14 Tage
+  if (g && k && g.length === k.length && g.length <= 14) {
+    for (i = 0; i < g.length; i++) {
+      if (!fin(g[i]) || !fin(k[i]) || Math.abs(g[i]) > 1e4 || Math.abs(k[i]) > 1e4) { D.xe = []; D.xw = []; break; }
+      D.xe.push(r2(g[i])); D.xw.push(r2(k[i]));
+    }
+  }
+  if (!D.xe.length) D.xa = -1;
+  if (v.pz === C.LAND + C.ORT && fin(v.la) && Math.abs(v.la) <= 90 && fin(v.lo) && Math.abs(v.lo) <= 180) {
+    D.la = v.la; D.lo = v.lo;               // sonst Ort neu bestimmen
+  } else D.pz = "";
+  S = D;
   try { v = JSON.parse(Script.storage.getItem("f")); } catch (e2) { v = null; }   // Störungsprotokoll, eigener Eintrag:
-  R.fl = v && typeof v.length === "number" ? v : [];                              // S allein bleibt so unter 1024 Byte
+  R.fl = [];                                                                       // S allein bleibt so unter 1024 Byte
+  if (v && typeof v === "object" && v.length <= 5) for (i = 0; i < v.length; i++) if (typeof v[i] === "string" && jlen(v[i]) <= 60) R.fl.push(v[i]);
 }
 function save() { R.sd = true; }          // geschrieben wird am Ende des Takts (flush), so bleibt der Stapel flach
 function flush() {                        // Schreibbremse: höchstens 1 je Minute, nach WRITES_DAY in 24 h 1 je Stunde;
@@ -358,6 +385,7 @@ function vcNext() {                      // Schleife statt Selbstaufruf: der Sta
 }
 function vcStart() { R.hb = upS(); R.hn++; vcI = 0; vcNext(); }   // Bedienfeld anlegen (was fehlt) und binden
 function vcAdded(res, err, msg) {
+  if (vcI >= VC.length) return;           // später Rückruf eines früheren Durchlaufs
   if (err) log("Bedienfeld " + VC[vcI][2] + ": " + msg);
   vcI++; vcNext();
 }
@@ -366,7 +394,7 @@ function vcGroup() {                      // Gruppe enthält genau das Bedienfel
   var want = [], i, g = Shelly.getComponentStatus("group", 200), v = g ? g.value : null, ok, s;   // zurück, schriebe ein
   for (i = 0; i < VC.length; i++) want.push(VC[i][0] + ":" + VC[i][1]);                         // Vergleich als Ganzes
   ok = !!v && v.length === want.length;                                                         // sonst jedes Mal
-  s = ok ? "," + v.join(",") + "," : "";
+  s = ok ? "," + String(v) + "," : "";   // String statt join: wirft auch bei einem Wert ohne join nicht
   for (i = 0; i < want.length; i++) if (s.indexOf("," + want[i] + ",") < 0) ok = false;
   if (!ok) cfgCall("Group.Set", { id: 200, value: want }, cbNone);
 }
@@ -380,11 +408,13 @@ function vcBind() {
       if (!h[VC[i][2]]) ok = false;
       i++;
     }
-    if (ok) R.hr = h.re.on("single_push", onRelearn);
   } catch (e) { ok = false; }
   if (!ok) {                              // ohne Anzeige weiter; schedule() versucht es erst minütlich, dann stündlich
     if (R.hn === 1) log("Bedienfeld unvollständig – ohne Anzeige weiter");
     return;
+  }
+  if (R.hr < 0) {                         // ein Abo genügt: ließ sich das alte nicht abmelden, bleibt es (Abos sind knapp)
+    try { R.hr = h.re.on("single_push", onRelearn); } catch (e2) { log("Knopf im Bedienfeld ohne Abo: " + e2); }
   }
   R.h = h; panelRead();
   if (R.hn > 1) log("Bedienfeld verbunden");
@@ -396,9 +426,10 @@ function onRelearn(ev) {                 // Bedienfeld: angelernte Werte verwerf
 function rate() { return R.ra > 0 ? R.ra : C.RATE_MM_H; }
 function autoOn() { return R.au; }
 function panelRead() {                    // Regenrate und Automatik aus dem Bedienfeld: beim Binden und alle 10 s (ui),
-  var v = R.h ? R.h.ra.getValue() : null; // tiefe Aufrufe lesen R.ra und R.au
-  R.ra = (typeof v === "number" && v >= 1 && v <= 40) ? v : 0;
-  R.au = !R.h || R.h.au.getValue() !== false;
+  var v = R.h ? R.h.ra.getValue() : (Shelly.getComponentStatus("number", 202) || {}).value,   // tiefe Aufrufe lesen
+      a = R.h ? R.h.au.getValue() : (Shelly.getComponentStatus("boolean", 200) || {}).value;  // R.ra und R.au; ohne
+  R.ra = (typeof v === "number" && v >= 1 && v <= 40) ? v : 0;                                // Bindung aus dem
+  R.au = a !== false;                                                                         // Gerätestatus
 }
 function paused(L) { return S.pu && L.day <= S.pu; }
 
@@ -431,6 +462,7 @@ function xDrop() {                        // ältester geschätzter Tag fällt a
 }
 function bookEst(L) {                     // ohne Internet: offene Tage geschätzt verbuchen, für die Korrektur merken
   var d, b, e, w0 = S.pi;
+  if (S.dp + 1 >= L.day) return;          // kein offener Tag (zweiter Aufruf am selben Tag): Gegossenes bleibt in S.pi
   if (S.xa < 0 && S.dp + 1 < L.day) { S.xd = S.d; S.xe = []; S.xw = []; }
   S.d = lim(S.d - S.pi, 0, C.D_MAX_MM); S.pi = 0;
   for (d = S.dp + 1; d < L.day; d++) {   // Zwischenwerte einzeln: Aufrufe in der Schleife kosten Stapel
@@ -519,8 +551,10 @@ function clockFix(tUp) {                  // geschätzte Uhr auf Sonnenaufgang +
 }
 function oaShift(d) {                     // Uhr gestellt: Beginn eines laufenden Ausfalls mitverschieben, ebenso den
   if (R.oa) { R.oa += d; if (S.os > 1) S.os = Math.floor(R.oa); }   // letzten, wenn er mit geschätzter Uhr endete
-  if (R.ie && S.io) S.io = Math.floor(S.io + d);                    // (Wetterdienst vor dem Zeitserver zurück)
-}
+  if (R.ie && S.io) S.io = Math.floor(S.io + d);                    // (Wetterdienst vor dem Zeitserver zurück);
+  if (S.rt) S.rt = Math.floor(S.rt + d);                            // geplanter Nachlauf und aufgeschobener Start
+  if (R.want) R.want.exp += d;                                      // behalten ihren Abstand, sonst käme der
+}                                                                   // Nachlauf nach dem Stellen sofort
 function onClockSet(res, err, msg) {      // Schätzung erst nachziehen, wenn die Geräteuhr wirklich gestellt ist
   R.cp = 0;
   if (err) { S.cs = R.co; log("Uhr nicht stellbar: " + msg); return; }
@@ -538,8 +572,8 @@ function clockReal(t, old) {              // der Zeitserver hat gestellt: die Uh
 function startsLastHour(now) {
   var a = [], i;
   for (i = 0; i < R.starts.length; i++) if (now - R.starts[i] < 3600) a.push(R.starts[i]);
-  R.starts = a;
-  return a.length;
+  R.starts = a.slice(-C.MAX_STARTS_H);    // es zählen nur die neuesten: so wächst die Liste nicht, wenn ein verlorenes
+  return a.length;                        // Aus die Pumpe anlässt und jeder Takt den Start erneut sieht
 }
 function relayOff(why) {                  // monitor() und kalTick() schicken das Aus alle 5 s erneut, bis es aus ist:
   var r = R.run;                          // ein verlorener Befehl ließe die Pumpe sonst bis zum Firmware-Timer laufen
@@ -551,8 +585,8 @@ function onSetResult(res, err, msg) {
   if (!err) return;
   u = nowU(); t = ("Einschalten abgelehnt: " + msg).slice(0, 60);
   R.ps = null; log(t);
-  if (p && p.k !== "hand") R.want = { k: p.k, mm: p.mm, exp: p.exp || (u || 0) + 1800 };  // nochmal, höchstens
-                                          // 30 min ab der ersten Ablehnung und bis END_MIN
+  if (p && p.k !== "hand") R.want = { k: p.k, mm: p.mm, exp: p.exp || (u || 0) + 1800 };  // nochmal, bis zur Frist
+                                          // des Starts (Automatik 2 h ab der Prüfung) und bis END_MIN
   if (S.ft !== t || !S.fo || !(u && S.fu > 1 && loc(S.fu).day === loc(u).day)) {   // wie eine Störung: Statuszeile,
     S.fu = u ? Math.floor(u) : 1; S.ft = t; S.fo = 1; flAdd("ab", msg); save();    // LED rot; je Tag einmal gespeichert
   }
@@ -623,7 +657,7 @@ function pHi() { return S.pn ? S.pn * C.OVER_REL : C.P_ABS_OVER; }   // angelern
 // gemessenen Grenzen. Gespeichert und nachgeführt wird nichts [4]
 function monitor(st) {
   var r = R.run, now = upS(), el = now - r.t0, dt = lim(now - r.lt, 0, 5);
-  var P = st.apower || 0, I = st.current || 0, lo = pLo(), hi = pHi();
+  var P = nz(st.apower), I = nz(st.current), lo = pLo(), hi = pHi();   // kein Messwert: gilt als 0, also keinStrom
   r.lt = now;
   if (r.why) { if (!(now - r.ot < 5)) relayOff(r.why); return; }   // Abschaltung läuft: Aus alle 5 s wiederholen
   if (el > r.sec + 60) { relayOff("ende"); return; } // Firmware-Timer fehlte
@@ -648,7 +682,7 @@ var FLT = { fw: "Firmware-Schutz", ab: "Einschalten abgelehnt", rk: "Relais kleb
 function flAdd(k, d) {                    // Störungsprotokoll im Flash: die letzten 5, auch nach Stromausfall zu sehen
   var u = nowU();                         // (Besuch vor Ort ohne Internet); Kürzel aus WHY oder FLT, Messwert dazu
   R.fl = R.fl.slice(-4); R.fn = true; save();
-  R.fl.push((u ? String(Math.floor(u)) : "0000000000") + (R.est ? "~" : " ") + k + ":" + String(d || "").slice(0, 16));
+  R.fl.push((u && u < 1e10 ? String(Math.floor(u)) : "0000000000") + (R.est ? "~" : " ") + k + ":" + String(d || "").slice(0, 16));
 }
 function runEnd(st) {
   var r = R.run, now = upS(), u = nowU(), why = r.why, fw = st.errors && st.errors.length;
@@ -656,7 +690,7 @@ function runEnd(st) {
   if (r.k === "kal") { R.cue = 0; R.lx = 1; }   // nach dem Anlernen: LED im Lauf wieder blau, das Ergebnis gleich zeigen
   credit(r);
   if (fw && (!WHY[why] || why === "start")) why = "fw";   // die Firmware hat abgeschaltet, auch beim Anlernen
-  var fault = why === "fw" || !!WHY[why], fwe = fault && why === "fw" ? st.errors.join(",") : "";
+  var fault = why === "fw" || !!WHY[why], fwe = fault && why === "fw" ? String(st.errors) : "";
   var txt = fault ? (fwe ? "Firmware-Schutz: " + fwe : WHY[why] + (r.det ? " (" + r.det + ")" : "")) : "";
   if (fault) { S.fu = u ? Math.floor(u) : 1; S.ft = txt.slice(0, 60); S.fo = 1; flAdd(why, fwe || r.det); }   // LED rot,
   else if (r.ps >= 60 && (r.k !== "kal" || why === "angelernt")) S.fo = 0;      // bis ein Lauf 1 min normal gepumpt hat
@@ -686,7 +720,7 @@ function runEnd(st) {
   save();
 }
 function weldCheck(st) {
-  var now = upS(), P = st.apower || 0;
+  var now = upS(), P = nz(st.apower);
   if (R.lastStop && now - R.lastStop < 5) return;   // Messwert hinkt nach
   if (P > C.NOLOAD_W) {
     R.wc++;
@@ -727,7 +761,7 @@ function kalStart() {                     // die Handgabe des 5. Drucks wird zum
 }
 function kalSum(P) { var r = R.run; r.ks += P; r.kn++; if (P < r.kl) r.kl = P; if (P > r.kh) r.kh = P; }
 function kalTick(st) {                    // Schritte 1 (Normalleistung), 2 (warten auf Zudrehen), 3 (Hahn zu messen)
-  var r = R.run, now = upS(), el = now - r.kt, dt = lim(now - r.lt, 0, 5), P = st.apower || 0, I = st.current || 0, e = "";
+  var r = R.run, now = upS(), el = now - r.kt, dt = lim(now - r.lt, 0, 5), P = nz(st.apower), I = nz(st.current), e = "";
   r.lt = now;
   if (r.why) { if (!(now - r.ot < 5)) relayOff(r.why); return; }   // Aus läuft: alle 5 s wiederholen
   r.i = (el >= 2 && I > C.I_MAX) ? r.i + 1 : 0;
@@ -990,7 +1024,7 @@ function onGeo(res, err, msg) {
     if (!R.gx) log("Ort " + C.ORT + " nicht gefunden – Schreibweise prüfen oder LAT/LON eintragen");
     R.gx = true; return;
   }
-  if (typeof g.latitude !== "number" || typeof g.longitude !== "number") return;
+  if (!fin(g.latitude) || !fin(g.longitude) || Math.abs(g.latitude) > 90 || Math.abs(g.longitude) > 180) return;
   R.gx = false; R.la = S.la = r2(g.latitude); R.lo = S.lo = r2(g.longitude); S.pz = C.LAND + C.ORT; save();
   log("Ort " + C.ORT + ": " + R.la + ", " + R.lo);
 }
@@ -1024,6 +1058,7 @@ function schedule() {
   if (R.defAt && upS() >= R.defAt) defTime();
   if (upS() >= R.cfgAt) { R.cfgAt = upS() + 3600; applyCfg(); watchdog(); }   // stündlich: Notabschaltung, Zeitpläne
   if (!R.h && upS() - R.hb >= (R.hn < 10 ? 60 : 3600)) vcStart();          // Bedienfeld fehlt: nochmal versuchen
+  if (!R.h) panelRead();                  // bis dahin Automatik und Regenrate aus dem Gerätestatus
   if (R.la === null && upS() >= R.gn) geo();                    // Ort noch unbekannt: alle 15 min fragen
   var u = nowU();
   if (!u) return;
@@ -1048,20 +1083,21 @@ function schedule() {
   if (R.run && (R.run.k === "auto" || R.run.k === "retry") && (!autoOn() || paused(L))) relayOff("aus");   // Automatik
                                                                                     // aus: ihren Lauf beenden
   var wt = R.est && now < C.NTP_WAIT_S;  // eben hochgefahren, Uhr nur geschätzt: erst auf den Zeitserver warten
+  var ins = inSeason(L), ok = !wt && L.min >= C.START_MIN && L.min < C.END_MIN && ins;   // Automatik nur dann; früher
   if (!wt && S.ev !== L.day && L.min >= C.START_MIN && L.min < C.END_MIN && !R.wx.busy && now >= R.wx.next && !R.run && !R.ps) {
-    evaluate(L);
-  }
-  if (!wt && S.rc === L.day && L.min >= R.rh && L.min < C.END_MIN && !R.wx.busy && !R.run && !R.ps) {
+    evaluate(L);                          // am Tag warten Nachprüfung, aufgeschobener Start und Nachlauf bis START_MIN
+  }                                       // (Uhr zurückgestellt, Neustart); außerhalb der Saison entfallen sie
+  if (ok && S.rc === L.day && L.min >= R.rh && !R.wx.busy && !R.run && !R.ps) {
     R.rh = (Math.floor(L.min / 60) + 1) * 60 + 5;        // klappt der Abruf nicht: nächste Stunde
     if (R.off || R.la === null) decide(L, null, true); else fetchWx(L, 0, true);   // ohne Wetter: Frost nach Gerätefühler
   }
   if (R.want && !wt) {
-    if (u > R.want.exp || !autoOn() || L.min >= C.END_MIN) R.want = null;
-    else if (!startRun(R.want.k, R.want.mm)) { R.ps.exp = R.want.exp; R.want = null; }
+    if (u > R.want.exp || !autoOn() || L.min >= C.END_MIN || !ins) R.want = null;
+    else if (ok && !startRun(R.want.k, R.want.mm)) { R.ps.exp = R.want.exp; R.want = null; }
   }
   if (S.rt && u >= S.rt && !R.run && !wt) {   // gespeicherter Nachlauf: nach dem Hochfahren ebenso erst den Zeitserver
-    if (L.min >= C.END_MIN || !autoOn() || paused(L) || S.fd !== L.day) { S.rt = 0; save(); }
-    else if (!startRun("retry", S.rm)) { S.rt = 0; save(); }
+    if (L.min >= C.END_MIN || !autoOn() || paused(L) || S.fd !== L.day || !ins) { S.rt = 0; save(); }
+    else if (ok && !startRun("retry", S.rm)) { S.rt = 0; save(); }
   }
 }
 function onProbe(res, err, msg) { if (!err && res && res.code === 200 && R.off) { setOff(false); save(); } }
@@ -1118,7 +1154,7 @@ function ui() {
     uiSet(L);
   } catch (e) {                           // Bedienfeld verloren: neu anlegen und binden (schedule), höchstens 3-mal
     log("Bedienfeld neu: " + e); R.hl++;
-    try { R.h.re.off(R.hr); } catch (e2) { /* Taster schon weg */ }
+    try { R.h.re.off(R.hr); R.hr = -1; } catch (e2) { /* Knopf schon weg: sein Abo bleibt womöglich, nicht neu anmelden */ }
     R.h = null; R.hn = 0; R.hb = 0; R.paShown = -1; R.lastTxt = ""; R.lastD = -1; panelRead();
   }
 }
@@ -1126,8 +1162,8 @@ function uiSet(L) {
   var t, d, pv, a;
   panelRead();
   pv = R.h.pa.getValue();
-  if (L && typeof pv === "number" && R.paShown >= 0 && pv !== R.paShown) {  // Pause im Bedienfeld geändert
-    S.pu = pv > 0 ? L.day + r0(pv) - 1 : 0; S.rt = 0; R.want = null; save();
+  if (L && fin(pv) && R.paShown >= 0 && pv !== R.paShown) {  // Pause im Bedienfeld geändert (0 bis 14 Tage)
+    pv = r0(lim(pv, 0, 14)); S.pu = pv > 0 ? L.day + pv - 1 : 0; S.rt = 0; R.want = null; save();
     a = pv > 0 ? dmy(S.pu) : "";
     log("Pause " + (pv > 0 ? "bis " + a : "aufgehoben"));
   }
@@ -1266,7 +1302,7 @@ function onSchedList(res, err, msg) {
   var jobs = (res && res.jobs) || [], i, j, c, m, wd = null, up = false;
   if (err) { log("Zeitplan nicht lesbar: " + msg); return; }
   for (i = 0; i < jobs.length; i++) {
-    c = jobs[i].calls || [];
+    c = (jobs[i] && jobs[i].calls) || [];
     for (j = 0; j < c.length; j++) {
       m = c[j] ? String(c[j].method).toLowerCase() : "";
       if (m === "script.start" && c[j].params && c[j].params.id === Script.id) wd = jobs[i];
@@ -1291,13 +1327,20 @@ function onSchedSet(res, err, msg) {
   if (err) log("Zeitplan nicht gesetzt: " + msg);
   else if (R.sn < 2) watchdog(R.sn + 1);
 }
-function init() {
+function init() {                         // erst, was ohne Firmware-Aufruf geht: wirft ein Aufruf (RPC-Grenze), fehlen
+  var s, up;                              // Diagnose-Seite und Anlern-Geste nicht; die Einstellungen holt schedule() nach
   swKeep(sw()); R.u = nowU() || 0; R.oq = uenc(C.ORT);
   if (typeof C.LAT === "number" && typeof C.LON === "number") { R.la = C.LAT; R.lo = C.LON; }   // Ort eingetragen
   else if (S.la !== null) { R.la = S.la; R.lo = S.lo; }                                        // Ort gespeichert
   R.t0 = S.t; R.s0 = upS();               // für die Diagnose
   if (S.os) { R.off = true; R.oa = S.os > 1 ? S.os : 0; }   // Wetterdienst fehlte schon vor dem Neustart
-  var s = Shelly.getComponentStatus("sys"), up = upS();
+  s = Shelly.getComponentStatus("sys"); up = upS();
+  ledInit();
+  try { HTTPServer.registerEndpoint("info", onInfo); } catch (e) { log("Diagnose-Seite fehlt: " + e); }
+  if (up < 60) {                          // gerade eingesteckt: 5× drücken startet das Anlernen; schon an = vor dem
+    try { R.ko = !!sw().output; R.kts = R.ko ? [up] : []; R.kh = Shelly.addStatusHandler(onSt); }   // Skriptstart gedrückt,
+    catch (e2) { log("Anlern-Geste fehlt: " + e2); }                                           // das zählt als 1. Druck
+  }
   if (S.wu > 0 && up >= S.wu) { R.sv = S.wu; R.wn = S.wn; R.w24 = Math.min(S.wb, up); }   // Skript-Neustart: Bremse zählt weiter
   if (s && typeof s.unixtime === "number" && s.unixtime > C.T_MIN && (!S.ce || up < S.tu || ntpSet())) {   // echte Zeit
     if (S.ce || S.df) {                    // Zeitserver hat gestellt, bevor das Skript lief
@@ -1308,17 +1351,11 @@ function init() {
     R.eb = S.t + (up >= S.tu ? up - S.tu : up); R.eu = up; R.est = true; R.def = S.df === 1; R.u = nowU() || 0;
     if (S.ce !== 1 || up < S.tu || !(s && s.unixtime > C.T_MIN)) {   // nach einem Skript-Neustart läuft die
       S.ce = 1; S.cs = Math.floor(R.eb);                              // gestellte Geräteuhr weiter: nichts zu schreiben
-      Shelly.call("Sys.SetTime", { unixtime: S.cs }, cbNone);
       log("Uhr aus Zeitanker geschätzt"); save();
+      Shelly.call("Sys.SetTime", { unixtime: S.cs }, cbNone);
     }
   } else R.defAt = up + 120;               // kein Anker: 2 min auf den Zeitserver warten
-  applyCfg(); watchdog(); R.cfgAt = up + 3600;   // danach stündlich aus schedule()
-  ledInit();
-  try { HTTPServer.registerEndpoint("info", onInfo); } catch (e) { log("Diagnose-Seite fehlt: " + e); }
-  if (upS() < 60) {                       // gerade eingesteckt: 5× drücken startet das Anlernen; schon an = vor dem
-    try { R.ko = !!sw().output; R.kts = R.ko ? [up] : []; R.kh = Shelly.addStatusHandler(onSt); }   // Skriptstart gedrückt,
-    catch (e2) { log("Anlern-Geste fehlt: " + e2); }                                           // das zählt als 1. Druck
-  }
+  applyCfg(); watchdog(); R.cfgAt = up + 3600;   // danach stündlich aus schedule(); wirft ein Aufruf, bleibt R.cfgAt 0
 }
 function start() {                        // ein Fehler beim Start hält den Takt nicht auf: ohne Takt liefe eine
   load();                                 // Handgabe ohne Leistungsüberwachung; load() fängt seine Fehler selbst

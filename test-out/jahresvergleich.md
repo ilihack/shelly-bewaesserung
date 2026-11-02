@@ -1,6 +1,6 @@
 | Verfahren | 2022 | 2023 | 2024 | 2025 | 2026 | Summe |
 | --- | --- | --- | --- | --- | --- | --- |
-| Skript mit Prognose | 528 mm / 0 St / 0 V | 471 mm / 0 St / 0 V | 295 mm / 1 St / 0 V | 464 mm / 1 St / 0 V | 560 mm / 0 St / 0 V | 2318 mm / 2 St / 0 V |
+| Skript mit Prognose | 528 mm / 0 St / 0 V | 471 mm / 0 St / 0 V | 295 mm / 1 St / 0 V | 464 mm / 1 St / 1 V | 560 mm / 0 St / 0 V | 2318 mm / 2 St / 1 V |
 | Skript ohne Prognose | 545 mm / 0 St / 0 V | 484 mm / 0 St / 0 V | 354 mm / 0 St / 0 V | 489 mm / 0 St / 0 V | 568 mm / 0 St / 0 V | 2440 mm / 0 St / 0 V |
 | Skript ohne Internet | 818 mm / 0 St / 257 V | 771 mm / 0 St / 251 V | 745 mm / 0 St / 347 V | 771 mm / 0 St / 248 V | 825 mm / 1 St / 229 V | 3930 mm / 1 St / 1332 V |
 | Bodenfeuchte ideal | 535 mm / 0 St / 0 V | 489 mm / 0 St / 0 V | 315 mm / 0 St / 0 V | 500 mm / 0 St / 0 V | 558 mm / 0 St / 0 V | 2397 mm / 0 St / 0 V |

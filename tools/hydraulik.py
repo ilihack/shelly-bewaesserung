@@ -9,7 +9,7 @@ Anlage (Annahmen, in der Bauanleitung Kapitel 6 begründet):
   Pumpe hängt 7 m tief      -> 7 m Förderhöhe bis Gelände (ungünstigster Fall: Wasserspiegel an der Pumpe)
   Steigleitung im Brunnen   1,0 m Verlust bei 75 l/min
   Filter, sauber            2,0 m Verlust bei 75 l/min (etwa 0,2 bar)
-  Kleinverluste             1,0 m bei 75 l/min (Bögen, Kupplungen, Rückschlagventil, Brunnenkopf)
+  Kleinverluste             1,0 m bei 75 l/min (Bögen, Kupplungen, Brunnenkopf; ein Rückschlagventil hat die Anlage nicht)
   Leitung zu den Regnern    5,0 m Verlust bei 60 l/min (etwa 40 m PE-Rohr 32 mm) - Länge nicht bekannt
   alle Verluste quadratisch mit dem Förderstrom
 Regner: Rain Bird 5000, Standarddüsen, Herstellertabelle metrisch (Durchfluss und Wurfweite je Regner).

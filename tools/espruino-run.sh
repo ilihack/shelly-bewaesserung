@@ -1,6 +1,6 @@
 #!/bin/sh
 # Lässt das Skript im echten Espruino-Interpreter laufen (Ablauf siehe emu/espruino-shim.js)
-# Aufruf: tools/espruino-run.sh <skriptdatei> <espruino-binary>
+# Aufruf: sh tools/espruino-run.sh <skriptdatei> [espruino-binary]  (ohne Pfad: /tmp/espruino-build/Espruino/bin/espruino)
 SCRIPT="$1"; BIN="${2:-/tmp/espruino-build/Espruino/bin/espruino}"
 DIR=$(dirname "$0")/..
 OUT=$(mktemp -d)
