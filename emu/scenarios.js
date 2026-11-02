@@ -1473,6 +1473,7 @@ scenarios.S58_einschalten_abgelehnt = function () {
 const withLatLon = (code) => code.replace('LAT: null, LON: null', 'LAT: 49.51, LON: 8.55')           // Quelltext
   .replace(/("Ludwigshafen am Rhein",[\w$]+:"DE",[\w$]+:)null,([\w$]+:)null/, '$149.51,$28.55');      // Gerätefassung
 const ledOf = (x) => JSON.stringify(x.plugsUi.leds.colors['switch:0'].off.rgb);
+const ledOnOf = (x) => JSON.stringify(x.plugsUi.leds.colors['switch:0'].on.rgb);
 
 scenarios.S59_pruefer_uhr_und_speicher = function () {
   // a) Erststart ohne Zeitserver: Einstecken gilt als 1. April 10:00, geprüft nach 10 min. Der Zeitserver stellt die Uhr,
@@ -1615,14 +1616,19 @@ scenarios.S63_anlernen = function () {
   const t1 = w.vcText(), tm1 = w.dev.timer && w.dev.timer.dur;
   check('S63a 5 Drücke in der ersten Minute: Anlernen läuft, Firmware-Timer 300 s', /^Anlernen: Hahn offen lassen, Normalleistung messen/.test(t1) &&
     tm1 === 300, t1 + ' / ' + tm1);
+  const lw0 = w.ledWrites.length;
   w.runFor(56e3);                         // Normalleistung fertig 60 s nach dem 5. Druck, Statuszeile alle 10 s
-  const t2 = w.vcText();
-  check('S63a nach 1 min: Statuszeile „jetzt Hahn zudrehen“', /^Anlernen: jetzt Hahn zudrehen/.test(t2), t2);
-  const on5 = w.relay.filter(x => x.src === 'button').slice(-1)[0];
+  const t2 = w.vcText(), on5 = w.relay.filter(x => x.src === 'button').slice(-1)[0];
+  const cueT = w.ledWrites.filter(t => t > on5.t)[0], cueC = ledOnOf(w);
+  check('S63a nach 1 min: LED im Lauf weiß (binnen 2 s), Statuszeile „LED weiß: jetzt Hahn zudrehen“',
+    /^Anlernen: LED weiß: jetzt Hahn zudrehen/.test(t2) && cueC === '[100,100,100]' && cueT && cueT - on5.t >= 60e3 && cueT - on5.t <= 62e3 &&
+    w.ledWrites.length === lw0 + 1, t2 + ' · ' + cueC + ' nach ' + (cueT ? (cueT - on5.t) / 1000 : '-') + ' s');
   runUntil(w, () => logHas(w, /Angelernt|Anlernen abgebrochen/), 3 * M); w.runFor(5e3);
   const st = w.state(), last = w.relay.slice(-1)[0], mid = w.relay.filter(x => x.t > on5.t && x.t < last.t);
-  check('S63a kein Aus-Ein-Signal: das Relais bleibt bis zum Ende an (kein Rückschlagventil)', mid.length === 0 && last.src === 'loopback' && !last.on,
-    JSON.stringify(mid.map(x => [x.on, x.src])));
+  check('S63a nach dem Anlernen: LED im Lauf wieder blau, gleich (2 Schreibvorgänge fürs Anlernen)', ledOnOf(w) === '[0,0,100]' &&
+    w.ledWrites.length === lw0 + 2 && w.ledWrites[w.ledWrites.length - 1] - last.t <= 3e3, ledOnOf(w) + ' · ' + (w.ledWrites.length - lw0));
+  check('S63a kein Aus-Ein-Zeichen: das Relais bleibt bis zum Ende an (kein Rückschlagventil), das Zeichen ist die weiße LED',
+    mid.length === 0 && last.src === 'loopback' && !last.on, JSON.stringify(mid.map(x => [x.on, x.src, x.t - on5.t])));
   check('S63a übernommen: normal ~1320 W, Hahn zu ~818 W, Untergrenze in der Mitte ~1069 W, danach aus',
     Math.abs(st.pn - 1320) <= 20 && Math.abs(st.pc - 818) <= 20 && st.kt > 1 && !w.dev.output &&
     last.t - on5.t < 2 * M && logHas(w, /Angelernt: 13\d\d W, Hahn zu 8\d\d W, Untergrenze 10[5-8]\d W/), JSON.stringify({ pn: st.pn, pc: st.pc }) + ' · ' + kalLog(w));
@@ -1675,7 +1681,7 @@ scenarios.S63_anlernen = function () {
   // e) unplausibel: zu wenig, zu viel, unruhig -> abgebrochen, nichts übernommen, im Störungsprotokoll
   const e = kalWorld({ Pn: 250, noise: 5 }); presses(e, 5, 10, 1.5); e.runFor(2 * M);
   const ie = e.endpoint('info').body;
-  const eAb = e.logs.filter(l => /Anlernen abgebrochen/.test(l.msg))[0], eLed = e.ledWrites.filter(t => eAb && t > eAb.t)[0];
+  const eAb = e.logs.filter(l => /Anlernen abgebrochen/.test(l.msg))[0], eLed = e.ledWrites.filter(t => eAb && t >= eAb.t)[0];
   check('S63e Abbruch ist eine Störung: LED binnen 15 s rot, nicht erst nach 2 min', e.state().fo === 1 && eLed && eLed - eAb.t <= 15e3 &&
     ledOf(e) === '[100,0,0]', (eLed ? (eLed - eAb.t) / 1000 + ' s ' : 'keine LED ') + ledOf(e));
   check('S63e 250 W: abgebrochen, nichts übernommen, gespeichert im Störungsprotokoll', e.state().pn === 0 && !e.dev.output &&
@@ -1693,22 +1699,24 @@ scenarios.S63_anlernen = function () {
   const f = kalWorld(); presses(f, 5, 10, 1.5); f.at(f.dev.bootAt + 45e3, () => f.press()); f.runFor(2 * M);
   check('S63f Taster während des Anlernens: aus, abgebrochen, nichts übernommen, im Störungsprotokoll', f.state().pn === 0 && !f.dev.output &&
     logHas(f, /Anlernen abgebrochen: ausgeschaltet – nichts übernommen/) && /ka:ausgeschaltet/.test(f.storage.f || ''), kalLog(f));
-  // g) Geste: zu spät, der 5. Druck nach der ersten Minute, nur 3 Drücke: kein Anlernen; langsam, aber alle in der ersten
-  //    Minute: Anlernen; der erste Druck, bevor das Skript läuft, zählt mit
+  // g) Geste: 5 Drücke binnen 10 s in der ersten Minute. Zu spät, der 5. Druck nach der ersten Minute, nur 3 Drücke,
+  //    langsamer als 10 s: kein Anlernen, eine Handgabe läuft; 8 s gehen; der erste Druck vor dem Skriptstart zählt mit
   const g1 = kalWorld(); presses(g1, 5, 65, 1.5); g1.runFor(2 * M);
   const g2 = kalWorld(); presses(g2, 5, 30, 8); g2.runFor(2 * M);
   const g3 = kalWorld(); presses(g3, 3, 10, 1.5); g3.runFor(2 * M);
-  check('S63g zu spät, 5. Druck nach der ersten Minute, nur 3 Drücke: kein Anlernen, eine Handgabe läuft',
-    [g1, g2, g3].every(x => !logHas(x, /Anlernen/) && x.state().pn === 0 && x.dev.output && x.dev.timer && x.dev.timer.dur !== 300),
-    [g1, g2, g3].map(kalLog).join(' // '));
-  const g4 = kalWorld(); presses(g4, 5, 10, 10); g4.runFor(2 * M);
+  const g4 = kalWorld(); presses(g4, 5, 10, 2.7); g4.runFor(2 * M);      // 10,8 s vom 1. bis zum 5. Druck
+  const g6 = kalWorld(); presses(g6, 5, 10, 10); g6.runFor(2 * M);       // alle in der ersten Minute, aber über 40 s
+  check('S63g zu spät, 5. Druck nach der ersten Minute, nur 3 Drücke, 10,8 s und 40 s für 5 Drücke: kein Anlernen, eine Handgabe läuft',
+    [g1, g2, g3, g4, g6].every(x => !logHas(x, /Anlernen/) && x.state().pn === 0 && x.dev.output && x.dev.timer && x.dev.timer.dur !== 300),
+    [g1, g2, g3, g4, g6].map(kalLog).join(' // '));
+  const g7 = kalWorld(); presses(g7, 5, 10, 2); kalZu(g7, 72); g7.runFor(3 * M);   // 8 s vom 1. bis zum 5. Druck
   const g5 = learnedWorld(T(2027, 5, 15, 14, 0));
   g5.storage.s = JSON.stringify(Object.assign(JSON.parse(g5.storage.s), { dp: dayNo(T(2027, 5, 14, 12)), d: 3, pn: 0 }));
   g5.powerFail(1000); g5.runFor(1200); g5.press(); g5.runFor(300);    // 1. Druck 0,2 s nach dem Hochfahren, das Skript startet erst
   const g5pre = !g5.dev.scriptRunning || g5.logs.filter(l => /gestartet, Bodenkonto/.test(l.msg)).length < 2;
-  presses(g5, 4, 10, 1.5); g5.runFor(40e3);
-  check('S63g langsam, aber alle 5 in der ersten Minute: Anlernen; 1. Druck vor dem Skriptstart zählt mit',
-    logHas(g4, /Anlernen: Hahn offen lassen/) && g5pre && logHas(g5, /Anlernen: Hahn offen lassen/), kalLog(g4) + ' // ' + kalLog(g5));
+  presses(g5, 4, 4, 1.5); g5.runFor(40e3);
+  check('S63g 5 Drücke in 8 s: Anlernen; 1. Druck vor dem Skriptstart zählt mit (als Druck beim Skriptstart)',
+    logHas(g7, /Angelernt: 13\d\d W, Hahn zu 8\d\d W/) && g5pre && logHas(g5, /Anlernen: Hahn offen lassen/), kalLog(g7) + ' // ' + kalLog(g5));
   // h) Stromausfall während des Anlernens: nichts übernommen; Automatik aus: Anlernen läuft trotzdem durch
   const h = kalWorld(); presses(h, 5, 10, 1.5); h.runFor(40e3); h.powerFail(5e3); h.runFor(2 * M);
   const h2 = kalWorld(); h2.setVc('boolean:200', false); presses(h2, 5, 10, 1.5); kalZu(h2, 70); h2.runFor(3 * M);
@@ -1760,9 +1768,66 @@ scenarios.S63_anlernen = function () {
   const pt = p.dev.timer && p.dev.timer.dur;
   check('S63p Druck vor dem Skriptstart: normale Handgabe (Timer wie eine Handgabe, nicht 120 min)', p.dev.output && pt >= 2000 && pt <= 3000 &&
     logHas(p, /Pumpe an \(hand\), Ziel 6 mm in 42 min/), pt + ' s · ' + runsInfo(p));
-  const tests = [b, c, c2, d, e, e2, e3, e4, f, g1, g2, g3, g4, g5, h, h2, k2, j, l, m, m2, n2, n3, n4, o, p];
+  // q) Skript startet mitten im Anlernen neu, während die LED weiß ist: danach wieder blau (binnen 2 min), kein Dauerweiß
+  const q = kalWorld(); presses(q, 5, 10, 1.5); q.runFor(80e3);
+  const qCue = ledOnOf(q); q.restartScript(); q.runFor(3 * M);
+  check('S63q Skript-Neustart bei weißer LED: danach im Lauf wieder blau', qCue === '[100,100,100]' && ledOnOf(q) === '[0,0,100]',
+    qCue + ' -> ' + ledOnOf(q) + ' · ' + kalLog(q));
+  const tests = [b, c, c2, d, e, e2, e3, e4, f, g1, g2, g3, g4, g6, g7, g5, h, h2, k2, j, l, m, m2, n2, n3, n4, o, p, q];
   tests.forEach((x, n) => common(x, 'S63-' + n));
   return { a: kalLog(w).slice(0, 400), speicher: JSON.stringify(w.maxStore) };
+};
+
+// ------------------------------------------------------------------
+scenarios.S66_hahn_zu_ohne_anlernen = function () {
+  // nicht angelernt (600/2100 W): ein im Lauf zugedrehter Hahn fällt am Bezug des Laufs auf (20 % darunter), der Nachlauf
+  // mit noch zugedrehtem Hahn ebenso (Bezug des Laufs davor); ein schon vor dem Start zugedrehter Hahn nur mit Anlernen
+  const nl = { pn: 0, pc: 0, kt: 0 };
+  const w = learnedWorld(T(2027, 6, 1, 6, 30));
+  w.storage.s = JSON.stringify(Object.assign(JSON.parse(w.storage.s), { dp: dayNo(T(2027, 5, 31, 12)), d: 14 }, nl));
+  w.powerFail(1000); w.run(T(2027, 6, 1, 10, 20));
+  const r1 = w.runs()[0];
+  w.pump.mode = 'closed'; const tz = w.t; w.runFor(M);
+  const off1 = w.relay.filter(x => !x.on && x.t > tz)[0];
+  check('S66a nicht angelernt, Hahn im Lauf zugedreht: nach gut 8 s aus, Untergrenze 80 % des Bezugs', r1 && off1 && off1.t - tz <= 15e3 &&
+    logHas(w, /Schutz: unterlast \(8\d\d W < 10[3-7]\d W\)/) && w.state().rq >= 1290 && w.state().rq <= 1350,
+    (off1 ? (off1.t - tz) / 1000 + ' s' : 'kein Aus') + ' · rq ' + w.state().rq + ' · ' + runsInfo(w));
+  w.run(T(2027, 6, 1, 11, 30));
+  const r2 = w.runs()[1];
+  check('S66b Nachlauf, Hahn noch zu: nach gut 1 min aus (Bezug des Laufs davor)', r2 && r2.off && r2.min * 60 <= 75 &&
+    w.logs.filter(l => /Schutz: unterlast \(8\d\d W < 10[3-7]\d W\)/.test(l.msg)).length >= 2, runsInfo(w));
+  w.pump.mode = 'normal'; w.run(T(2027, 6, 1, 14, 0));
+  const r3 = w.runs()[2];
+  check('S66c Hahn wieder offen: der zweite Nachlauf gibt den Rest ohne Fehlauslösung', r3 && r3.offSrc === 'timer' && r3.min > 30 &&
+    !logHas(w, /Schutz: unterlast \(1\d\d\d W/), runsInfo(w));
+  const v = learnedWorld(T(2027, 6, 1, 6, 30));
+  v.storage.s = JSON.stringify(Object.assign(JSON.parse(v.storage.s), { dp: dayNo(T(2027, 5, 31, 12)), d: 14 }, nl));
+  v.pump.mode = 'closed'; v.powerFail(1000); v.run(T(2027, 6, 1, 10, 10));
+  check('S66d Hahn schon vor dem Start zu, nicht angelernt: fällt nicht auf (Grenze: Anlernen, 120 min)', v.dev.output && !logHas(v, /Schutz/),
+    runsInfo(v));
+  // e) angelernt ohne Hahn-zu-Wert (Untergrenze 75 % = 990 W): kein Bezug je Lauf, ein Abfall auf 78 % schaltet nicht ab
+  const x = learnedWorld(T(2027, 6, 1, 6, 30));
+  x.storage.s = JSON.stringify(Object.assign(JSON.parse(x.storage.s), { dp: dayNo(T(2027, 5, 31, 12)), d: 14, pn: 1320, pc: 0, kt: 1 }));
+  x.pump.closedRel = 0.78; x.powerFail(1000); x.run(T(2027, 6, 1, 10, 20)); x.pump.mode = 'closed'; x.runFor(2 * M);
+  check('S66e angelernt: nur die gemessenen Grenzen, kein Bezug je Lauf (78 % liegt über 75 %)', x.dev.output && !logHas(x, /Schutz/), runsInfo(x));
+  // f) Überlast im Messfenster (Sand, 2200 W) vergiftet den Nachlauf nicht: Bezug nur nach Unterlast weitergegeben
+  const y = learnedWorld(T(2027, 6, 1, 6, 30));
+  y.storage.s = JSON.stringify(Object.assign(JSON.parse(y.storage.s), { dp: dayNo(T(2027, 5, 31, 12)), d: 14 }, nl));
+  const ym = y.measure.bind(y);
+  y.measure = function () { const m = ym(); if (this.pump.mode === 'sand' && this.dev.output) { m.P = 2200 + (this.rand() * 2 - 1) * 25; m.I = m.P / 210; } return m; };
+  y.powerFail(1000); y.run(T(2027, 6, 1, 10, 0)); runUntil(y, () => y.dev.output, 5 * M);
+  const yt = y.t; y.at(yt + 38e3, () => { y.pump.mode = 'sand'; }); y.runFor(70e3); y.pump.mode = 'normal';
+  const yrq = y.state().rq; y.run(T(2027, 6, 1, 12, 40));
+  const yr = y.runs();
+  check('S66f Überlast im Messfenster: Nachlauf ohne geerbten Bezug, gibt den Rest ohne Fehlauslösung', logHas(y, /Schutz: ueberlast/) &&
+    yrq === 0 && yr.length === 2 && yr[1].offSrc === 'timer' && !logHas(y, /Schutz: unterlast/), 'rq ' + yrq + ' · ' + runsInfo(y));
+  // g) Leitung füllt sich 50 s lang mit 18 % mehr Leistung: kein Fehlalarm (Bezug erst 10 bis 20 s nach der Anlaufzeit)
+  const z = learnedWorld(T(2027, 6, 1, 6, 30));
+  z.storage.s = JSON.stringify(Object.assign(JSON.parse(z.storage.s), { dp: dayNo(T(2027, 5, 31, 12)), d: 14 }, nl));
+  z.pump.fillS = 50; z.powerFail(1000); z.run(T(2027, 6, 1, 12, 0));
+  check('S66g Füllen 50 s: die Gabe läuft ohne Fehlauslösung durch', z.runs().length === 1 && z.runs()[0].offSrc === 'timer' &&
+    !logHas(z, /Schutz/), runsInfo(z));
+  common(w, 'S66'); common(v, 'S66d'); common(x, 'S66e'); common(y, 'S66f'); common(z, 'S66g');
 };
 
 // ------------------------------------------------------------------
